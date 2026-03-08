@@ -92,12 +92,10 @@ class Player {
                 // Building collision
                 const bCol = world.checkBuildingCollision(this.x - this.w / 2, this.y - this.h / 2, this.w, this.h);
                 if (bCol) {
-                    Collision.resolveAABB(
-                        { x: this.x - this.w / 2, y: this.y - this.h / 2, w: this.w, h: this.h },
-                        { x: bCol.x, y: bCol.y, w: bCol.w, h: bCol.h }
-                    );
-                    this.x = this.x;
-                    this.y = this.y;
+                    const mover = { x: this.x - this.w / 2, y: this.y - this.h / 2, w: this.w, h: this.h };
+                    Collision.resolveAABB(mover, { x: bCol.x, y: bCol.y, w: bCol.w, h: bCol.h });
+                    this.x = mover.x + this.w / 2;
+                    this.y = mover.y + this.h / 2;
                 }
 
                 // Footsteps

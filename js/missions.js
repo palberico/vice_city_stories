@@ -38,6 +38,7 @@ const MISSION_DATA = [
         name: 'Street Race',
         description: 'Race through the city checkpoints!',
         reward: 2000,
+        timeLimit: 120, // 2-minute time limit starting from first checkpoint
         steps: [
             { type: 'enter_vehicle', text: 'Get in a fast car', radius: 0 },
             { type: 'drive_to', text: 'Checkpoint 1', targetTile: { x: 22, y: 20 }, radius: 100 },
@@ -68,7 +69,9 @@ class MissionSystem {
         this.missionMarkers = [];
         this.missionMessage = '';
         this.messageTimer = 0;
-        this.repoVehicle = null; // special car for repo mission
+        this.repoVehicle = null;
+        this.missionTimer = 0;    // countdown for timed missions
+        this.timerActive = false; // timer only starts after first checkpoint in race
         this.setupMarkers();
     }
 
@@ -90,14 +93,13 @@ class MissionSystem {
     }
 
     spawnRepoVehicle(vehicles, images) {
-        // Spawn a special sports car at the repo target location (must perfectly match targetTile from mission data)
         const tx = 46 * TILE;
         const ty = 38 * TILE;
         const repoCar = new Vehicle(tx, ty, 'sports', images);
         repoCar.isRepoTarget = true;
-        repoCar.ai.active = false; // parked, don't drive
+        repoCar.ai.active = false;
         repoCar.speed = 0;
-        repoCar.angle = Math.PI / 4; // angled parking
+        repoCar.angle = Math.PI / 4;
         this.repoVehicle = repoCar;
         vehicles.push(repoCar);
     }
@@ -120,63 +122,82 @@ class MissionSystem {
                     break;
                 }
             }
-        } else {
-            // Update active mission
-            const step = this.activeMission.steps[this.currentStep];
-            if (!step) {
-                this.completeMission(player, audio, vehicles);
+            return;
+        }
+
+        // ---- Failure conditions ----
+        // All missions: player dies
+        if (!player.alive) {
+            this.failMission('You were wasted!', audio, vehicles);
+            return;
+        }
+        // Repo job: repo car destroyed
+        if (this.activeMission.id === 'repo_job' && this.repoVehicle && this.repoVehicle.health <= 0) {
+            this.failMission('The car was destroyed!', audio, vehicles);
+            return;
+        }
+        // Street race: countdown timer (starts after step 0 — getting in car)
+        if (this.activeMission.id === 'street_race' && this.timerActive) {
+            this.missionTimer -= dt;
+            if (this.missionTimer <= 0) {
+                this.failMission('Time ran out!', audio, vehicles);
                 return;
             }
+        }
 
-            let completed = false;
-            switch (step.type) {
-                case 'go_to':
-                    if (step.targetTile) {
-                        const tx = step.targetTile.x * TILE;
-                        const ty = step.targetTile.y * TILE;
-                        if (Collision.dist(player.x, player.y, tx, ty) < step.radius) {
-                            completed = true;
-                        }
-                    }
-                    break;
-                case 'enter_vehicle':
-                    if (player.inVehicle) completed = true;
-                    break;
-                case 'enter_repo_vehicle':
-                    // Must enter the specific repo car
-                    if (player.inVehicle && player.inVehicle.isRepoTarget) {
-                        completed = true;
-                    }
-                    break;
-                case 'drive_to':
-                    if (player.inVehicle && step.targetTile) {
-                        const tx = step.targetTile.x * TILE;
-                        const ty = step.targetTile.y * TILE;
-                        if (Collision.dist(player.x, player.y, tx, ty) < step.radius) {
-                            completed = true;
-                        }
-                    }
-                    break;
-                case 'shoot':
-                    if (step.targetTile) {
-                        const tx = step.targetTile.x * TILE;
-                        const ty = step.targetTile.y * TILE;
-                        if (Collision.dist(player.x, player.y, tx, ty) < step.radius && player.weapons.fireCooldown > 0) {
-                            completed = true;
-                            player.addWanted(3, audio);
-                        }
-                    }
-                    break;
-            }
+        // ---- Step progression ----
+        const step = this.activeMission.steps[this.currentStep];
+        if (!step) {
+            this.completeMission(player, audio, vehicles);
+            return;
+        }
 
-            if (completed) {
-                this.currentStep++;
-                if (this.currentStep >= this.activeMission.steps.length) {
-                    this.completeMission(player, audio, vehicles);
-                } else {
-                    this.showMessage(this.activeMission.steps[this.currentStep].text);
-                    audio.playPickup();
+        let completed = false;
+        switch (step.type) {
+            case 'go_to':
+                if (step.targetTile) {
+                    const tx = step.targetTile.x * TILE;
+                    const ty = step.targetTile.y * TILE;
+                    if (Collision.dist(player.x, player.y, tx, ty) < step.radius) completed = true;
                 }
+                break;
+            case 'enter_vehicle':
+                if (player.inVehicle) completed = true;
+                break;
+            case 'enter_repo_vehicle':
+                if (player.inVehicle && player.inVehicle.isRepoTarget) completed = true;
+                break;
+            case 'drive_to':
+                if (player.inVehicle && step.targetTile) {
+                    const tx = step.targetTile.x * TILE;
+                    const ty = step.targetTile.y * TILE;
+                    if (Collision.dist(player.x, player.y, tx, ty) < step.radius) completed = true;
+                }
+                break;
+            case 'shoot':
+                if (step.targetTile) {
+                    const tx = step.targetTile.x * TILE;
+                    const ty = step.targetTile.y * TILE;
+                    if (Collision.dist(player.x, player.y, tx, ty) < step.radius && player.weapons.fireCooldown > 0) {
+                        completed = true;
+                        player.addWanted(3, audio);
+                    }
+                }
+                break;
+        }
+
+        if (completed) {
+            this.currentStep++;
+            // Start race timer after the player gets in a car (step 0 → step 1)
+            if (this.activeMission.id === 'street_race' && this.currentStep === 1) {
+                this.timerActive = true;
+                this.missionTimer = this.activeMission.timeLimit;
+            }
+            if (this.currentStep >= this.activeMission.steps.length) {
+                this.completeMission(player, audio, vehicles);
+            } else {
+                this.showMessage(this.activeMission.steps[this.currentStep].text);
+                audio.playPickup();
             }
         }
     }
@@ -184,10 +205,11 @@ class MissionSystem {
     startMission(index, audio, vehicles, images) {
         this.activeMission = this.missions[index];
         this.currentStep = 0;
+        this.missionTimer = 0;
+        this.timerActive = false;
         this.showMessage(`MISSION: ${this.activeMission.name} — ${this.activeMission.description}`);
         audio.playPickup();
 
-        // Spawn repo vehicle if this is the repo job
         if (this.activeMission.id === 'repo_job') {
             this.spawnRepoVehicle(vehicles, images);
         }
@@ -197,7 +219,6 @@ class MissionSystem {
         player.money += this.activeMission.reward;
         this.showMessage(`MISSION COMPLETE: ${this.activeMission.name}! +$${this.activeMission.reward}`);
 
-        // Clean up repo vehicle
         if (this.activeMission.id === 'repo_job') {
             this.removeRepoVehicle(vehicles);
         }
@@ -205,8 +226,25 @@ class MissionSystem {
         this.activeMission.completed = true;
         this.activeMission = null;
         this.currentStep = 0;
+        this.timerActive = false;
         this.setupMarkers();
         audio.playMissionComplete();
+    }
+
+    failMission(reason, audio, vehicles) {
+        const name = this.activeMission.name;
+        this.showMessage(`MISSION FAILED: ${name} — ${reason}`);
+
+        if (this.activeMission.id === 'repo_job') {
+            this.removeRepoVehicle(vehicles);
+        }
+
+        this.activeMission = null;
+        this.currentStep = 0;
+        this.timerActive = false;
+        this.missionTimer = 0;
+        // Re-show markers so player can retry
+        this.setupMarkers();
     }
 
     showMessage(msg) {
@@ -227,6 +265,11 @@ class MissionSystem {
             return { x: step.targetTile.x * TILE, y: step.targetTile.y * TILE };
         }
         return null;
+    }
+
+    getMissionTimer() {
+        if (!this.timerActive) return null;
+        return Math.max(0, this.missionTimer);
     }
 
     drawMarkers(ctx) {
@@ -271,7 +314,7 @@ class MissionSystem {
             ctx.restore();
         }
 
-        // Repo vehicle marker (pulsing orange circle around the car)
+        // Repo vehicle marker
         if (this.repoVehicle) {
             const pulse = Math.sin(Date.now() / 300) * 6;
             ctx.save();

@@ -38,7 +38,7 @@ const Input = {
     },
 
     updateWorldMouse(camera) {
-        this.mouse.worldX = this.mouse.x + camera.x - camera.width / 2;
-        this.mouse.worldY = this.mouse.y + camera.y - camera.height / 2;
+        this.mouse.worldX = (this.mouse.x - camera.width / 2) / camera.zoom + camera.x;
+        this.mouse.worldY = (this.mouse.y - camera.height / 2) / camera.zoom + camera.y;
     }
 };

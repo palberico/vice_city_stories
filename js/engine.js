@@ -8,7 +8,7 @@ class Game {
         this.state = 'menu'; // menu, loading, playing, paused
         this.lastTime = 0;
         this.images = {};
-        this.dayNight = { time: 8, speed: 0.3 }; // starts at 8:00 AM, 0.3 hours/sec
+        this.dayNight = { time: 8, speed: 0.02 }; // starts at 8:00 AM, 0.02 hours/sec (~20 min per full cycle)
         this.menuReady = false;
 
         // Systems
@@ -306,7 +306,9 @@ class Game {
         for (let i = this.vehicles.length - 1; i >= 0; i--) {
             const v = this.vehicles[i];
 
-            // Clean up destroyed vehicles
+            // Wrecks stay in the scene as burnt-out shells — skip update, keep for rendering
+            if (v.isWreck) continue;
+            // Remove non-wreck destroyed vehicles (non-police cars that just died)
             if (v.health <= 0 && v.type !== 'helicopter') {
                 this.vehicles.splice(i, 1);
                 continue;
@@ -343,6 +345,23 @@ class Game {
                 continue;
             }
 
+            if (b.owner === 'police') {
+                // Police bullets hit the player
+                if (this.player.alive) {
+                    const target = this.player.inVehicle || this.player;
+                    if (Collision.aabb(b, target.getBounds())) {
+                        if (this.player.inVehicle) {
+                            this.player.inVehicle.health -= b.damage;
+                        } else {
+                            this.player.takeDamage(b.damage);
+                        }
+                        this.particles.impact(b.x, b.y);
+                        b.active = false;
+                    }
+                }
+                continue;
+            }
+
             if (b.owner === 'player') {
                 let hitAny = false;
                 // Hit NPCs
@@ -369,7 +388,7 @@ class Game {
                         if (b.weaponName === 'rpg') {
                             this.explode(b.x, b.y, 80, 100, b.owner);
                         } else {
-                            v.health -= b.damage;
+                            v.health -= b.damage * 0.2; // small arms do reduced damage to vehicles
                             this.particles.impact(b.x, b.y);
                             if (v.type === 'police') this.player.addWanted(0.3, this.audio);
                             if (v.health <= 0) {
@@ -384,14 +403,18 @@ class Game {
             }
         }
 
-        // Weapon pickups on ground (ammo near dead NPCs)
+        // Collect drops from dead NPCs
         for (const npc of this.npcManager.npcs) {
-            if (!npc.alive && Collision.dist(this.player.x, this.player.y, npc.x, npc.y) < 30) {
-                if (Math.random() < 0.01) { // Rare pickup
-                    const weapons = ['pistol', 'smg', 'shotgun'];
-                    const wpn = weapons[Math.floor(Math.random() * weapons.length)];
-                    this.player.weapons.pickupWeapon(wpn, 10 + Math.floor(Math.random() * 20));
-                    this.hud.notify(`Picked up ${WEAPONS[wpn].name} ammo!`);
+            if (!npc.alive && npc.drop && Collision.dist(this.player.x, this.player.y, npc.x, npc.y) < 30) {
+                const drop = npc.drop;
+                npc.drop = null;
+                if (drop.type === 'cash') {
+                    this.player.money += drop.amount;
+                    this.hud.notify(`+$${drop.amount}`);
+                    this.audio.playPickup();
+                } else if (drop.type === 'weapon') {
+                    this.player.weapons.pickupWeapon(drop.weapon, drop.ammo);
+                    this.hud.notify(`Picked up ${WEAPONS[drop.weapon].name} ammo!`);
                     this.audio.playPickup();
                 }
             }
@@ -441,14 +464,22 @@ class Game {
         // Weapon Store interaction
         this.updateStore(dt);
 
-        // NPC vehicles also run over pedestrians (for realism)
+        // AI-driven vehicles stop for pedestrians and signal them to hurry
         for (const v of this.vehicles) {
-            if (v.driver || v.type === 'helicopter') continue; // skip player vehicle and helicopters
-            if (Math.abs(v.speed) < 50) continue;
+            if (v.driver || v.type === 'helicopter' || v.isWreck) continue;
+            if (v.speed <= 0) continue;
             for (const npc of this.npcManager.npcs) {
                 if (!npc.alive) continue;
-                if (Collision.dist(v.x, v.y, npc.x, npc.y) < 20) {
-                    npc.takeDamage(100, this.particles);
+                if (Collision.dist(v.x, v.y, npc.x, npc.y) < 55) {
+                    const toNpc = Math.atan2(npc.y - v.y, npc.x - v.x);
+                    let diff = toNpc - v.angle;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    if (Math.abs(diff) < Math.PI / 2) {
+                        v.speed = 0;
+                        npc.hurryTimer = 1.5; // NPC moves faster to clear the road
+                        break;
+                    }
                 }
             }
         }
@@ -797,9 +828,7 @@ class Game {
 
                 if (shooter === 'player') {
                     if (v.type === 'police') {
-                        // Kill any units inside
-                        for (const u of this.police.units) { if (u.vehicle === v) u.alive = false; }
-                        for (const u of this.police.patrolUnits) { if (u.vehicle === v) u.active = false; }
+                        // Officers bail out — handled by PoliceSystem.update next frame
                         // Give 5 stars
                         this.player.wantedLevel = 5;
                         this.hud.notify('Cop Killer! 5 STARS!');
@@ -811,7 +840,7 @@ class Game {
                             if (u.alive && Collision.dist(x, y, u.x, u.y) < 600) witness = true;
                         }
                         for (const u of this.police.patrolUnits) {
-                            if (u.active && Collision.dist(x, y, u.vehicle.x, u.vehicle.y) < 600) witness = true;
+                            if (u.alive && u.vehicle && Collision.dist(x, y, u.vehicle.x, u.vehicle.y) < 600) witness = true;
                         }
                         if (witness) {
                             this.player.addWanted(1, this.audio);

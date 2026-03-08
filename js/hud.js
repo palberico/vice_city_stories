@@ -105,15 +105,29 @@ class HUD {
             ctx.fillText(`★ ${objective}`, W / 2, 30);
         }
 
+        // ---- Race Timer ----
+        const raceTimer = missions.getMissionTimer();
+        if (raceTimer !== null) {
+            const secs = Math.ceil(raceTimer);
+            const urgent = secs <= 15;
+            ctx.fillStyle = urgent ? 'rgba(180,0,0,0.8)' : 'rgba(0,0,0,0.6)';
+            ctx.fillRect(W / 2 - 60, 45, 120, 28);
+            ctx.fillStyle = urgent ? '#ff4444' : '#ffffff';
+            ctx.font = `bold 18px "Courier New", monospace`;
+            ctx.textAlign = 'center';
+            ctx.fillText(`⏱ ${secs}s`, W / 2, 64);
+        }
+
         // ---- Mission Message ----
         if (missions.messageTimer > 0) {
             const alpha = Math.min(1, missions.messageTimer);
+            const isFailed = missions.missionMessage.startsWith('MISSION FAILED');
             ctx.fillStyle = `rgba(0,0,0,${0.7 * alpha})`;
-            ctx.fillRect(W / 2 - 300, 50, 600, 35);
-            ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+            ctx.fillRect(W / 2 - 300, raceTimer !== null ? 80 : 50, 600, 35);
+            ctx.fillStyle = isFailed ? `rgba(255,80,80,${alpha})` : `rgba(255,255,255,${alpha})`;
             ctx.font = 'bold 15px "Segoe UI", Arial';
             ctx.textAlign = 'center';
-            ctx.fillText(missions.missionMessage, W / 2, 72);
+            ctx.fillText(missions.missionMessage, W / 2, (raceTimer !== null ? 80 : 50) + 22);
         }
 
         // ---- Day/Night indicator ----

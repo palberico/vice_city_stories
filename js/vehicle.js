@@ -36,6 +36,7 @@ class Vehicle {
         this.isRepoTarget = false; // special mission car
         this.rotorAngle = 0; // for helicopter
         this.idleTimer = 0; // Tracks consecutive seconds of being stopped
+        this.isWreck = false; // true once destroyed and left as a burnt-out shell
 
         // NPC AI driving
         this.ai = {
@@ -432,6 +433,24 @@ class Vehicle {
     }
 
     draw(ctx) {
+        // Render burnt-out wreck
+        if (this.isWreck) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.angle + this.spriteRot);
+            ctx.globalAlpha = 0.85;
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(-this.w / 2, -this.h / 2, this.w, this.h);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(-this.w / 2, -this.h / 2, this.w, this.h);
+            // Scorch marks
+            ctx.fillStyle = '#2a1a00';
+            ctx.fillRect(-this.w / 2 + 3, -this.h / 2 + 3, this.w - 6, this.h - 6);
+            ctx.restore();
+            return;
+        }
+
         ctx.save();
         ctx.translate(this.x, this.y);
         // Use per-type rotation offset so each sprite faces the right way
