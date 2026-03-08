@@ -1,0 +1,98 @@
+/* ==============================================
+   VICE CITY STORIES — Global Styles
+   ============================================== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    overflow: hidden;
+    background: #000;
+    font-family: 'Outfit', 'Segoe UI', Arial, sans-serif;
+    cursor: crosshair;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#gameCanvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    image-rendering: auto;
+}
+
+/* Loading Screen */
+#loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(135deg, #1a0533 0%, #2d1b4e 50%, #ff6b35 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 1;
+    transition: opacity 0.5s ease;
+    pointer-events: none;
+}
+
+#loading-screen.hidden {
+    opacity: 0;
+}
+
+.loading-content {
+    text-align: center;
+}
+
+.loading-title {
+    font-family: 'Outfit', sans-serif;
+    font-size: 48px;
+    font-weight: 900;
+    color: #ff1493;
+    text-shadow:
+        0 0 20px rgba(255, 20, 147, 0.8),
+        0 0 40px rgba(255, 20, 147, 0.4),
+        0 0 80px rgba(255, 20, 147, 0.2);
+    letter-spacing: 4px;
+    margin-bottom: 40px;
+    animation: neonPulse 2s ease-in-out infinite;
+}
+
+@keyframes neonPulse {
+    0%, 100% { text-shadow: 0 0 20px rgba(255, 20, 147, 0.8), 0 0 40px rgba(255, 20, 147, 0.4); }
+    50% { text-shadow: 0 0 30px rgba(255, 20, 147, 1), 0 0 60px rgba(255, 20, 147, 0.6), 0 0 100px rgba(255, 20, 147, 0.3); }
+}
+
+.loading-bar-container {
+    width: 300px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 0 auto 20px;
+}
+
+.loading-bar {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #ff1493, #00ffff);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    0% { filter: brightness(1); }
+    50% { filter: brightness(1.3); }
+    100% { filter: brightness(1); }
+}
+
+.loading-text {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 14px;
+    letter-spacing: 2px;
+}

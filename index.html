@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="Vice City Stories — A GTA6-style open world action game built entirely in the browser">
+    <title>Vice City Stories — GTA6 Style Game</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;900&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="loading-screen">
+        <div class="loading-content">
+            <h1 class="loading-title">VICE CITY STORIES</h1>
+            <div class="loading-bar-container">
+                <div class="loading-bar" id="loadingBar"></div>
+            </div>
+            <p class="loading-text">Loading assets...</p>
+        </div>
+    </div>
+
+    <!-- Scripts - Order matters! Dependencies first -->
+    <script src="js/input.js?v=5"></script>
+    <script src="js/camera.js?v=5"></script>
+    <script src="js/collision.js?v=5"></script>
+    <script src="js/particles.js?v=5"></script>
+    <script src="js/audio.js?v=5"></script>
+    <script src="js/world.js?v=5"></script>
+    <script src="js/weapons.js?v=5"></script>
+    <script src="js/vehicle.js?v=5"></script>
+    <script src="js/player.js?v=5"></script>
+    <script src="js/npc.js?v=5"></script>
+    <script src="js/police.js?v=5"></script>
+    <script src="js/missions.js?v=5"></script>
+    <script src="js/minimap.js?v=5"></script>
+    <script src="js/hud.js?v=5"></script>
+    <script src="js/menu.js?v=5"></script>
+    <script src="js/engine.js?v=5"></script>
+</body>
+
+</html>
