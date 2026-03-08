@@ -206,8 +206,8 @@ class Player {
         this.armor = 0;
         this.wantedLevel = 0;
         this.money = Math.max(0, this.money - 100);
-        const sp = world.getRandomSpawnPoint();
-        if (sp) { this.x = sp.x; this.y = sp.y; }
+        this.x = HOSPITAL_PX.x;
+        this.y = HOSPITAL_PX.y;
     }
 
     draw(ctx) {

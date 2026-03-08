@@ -104,6 +104,30 @@ class Minimap {
             ctx.fill();
         }
 
+        // Hospital blip — red cross
+        {
+            const mx = offsetX + HOSPITAL_PX.x * this.scale * mapScale;
+            const my = offsetY + HOSPITAL_PX.y * this.scale * mapScale;
+            ctx.fillStyle = '#ff2222';
+            ctx.fillRect(mx - 1, my - 5, 2, 10);
+            ctx.fillRect(mx - 5, my - 1, 10, 2);
+        }
+
+        // Police station blip
+        {
+            const mx = offsetX + STATION_PX.x * this.scale * mapScale;
+            const my = offsetY + STATION_PX.y * this.scale * mapScale;
+            ctx.fillStyle = '#4466ff';
+            ctx.beginPath();
+            ctx.arc(mx, my, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 5px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('P', mx, my);
+        }
+
         // Player blip
         ctx.fillStyle = '#00ff00';
         ctx.beginPath();

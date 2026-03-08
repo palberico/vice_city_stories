@@ -209,6 +209,7 @@ class Game {
 
         // Police
         this.police = new PoliceSystem();
+        // patrol cars deploy automatically from the station
 
         // Missions
         this.missions = new MissionSystem();
@@ -521,6 +522,9 @@ class Game {
         // Draw buildings (on top for depth)
         this.world.drawBuildings(ctx, this.camera);
 
+        // Draw special location overlays (on top of buildings)
+        this._drawSpecialLocations(ctx);
+
         // Draw air vehicles (on top of buildings)
         for (const v of this.vehicles) {
             if (v.type === 'helicopter' && this.camera.isVisible(v.x - 40, v.y - 40, 80, 80)) {
@@ -541,6 +545,28 @@ class Game {
         this.drawDayNightOverlay(ctx);
 
         this.camera.restoreTransform(ctx);
+
+        // Crosshair (screen space)
+        if (this.player && this.player.alive && !this.menu.phoneOpen && !this.storeOpen) {
+            const mx = Input.mouse.x;
+            const my = Input.mouse.y;
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+            ctx.lineWidth = 1.5;
+            ctx.shadowColor = '#000';
+            ctx.shadowBlur = 3;
+            const s = 10;
+            ctx.beginPath();
+            ctx.moveTo(mx - s, my); ctx.lineTo(mx - 3, my);
+            ctx.moveTo(mx + 3, my); ctx.lineTo(mx + s, my);
+            ctx.moveTo(mx, my - s); ctx.lineTo(mx, my - 3);
+            ctx.moveTo(mx, my + 3); ctx.lineTo(mx, my + s);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(mx, my, 3, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
 
         // Draw HUD (screen space)
         this.hud.draw(ctx, this.canvas, this.player, this.world, this.vehicles, this.missions, this.police, this.audio, this.dayNight, this.stores);
@@ -694,6 +720,73 @@ class Game {
             this.storeOpen = false;
             this.storeIndex = -1;
         }
+    }
+
+    _drawSpecialLocations(ctx) {
+        // ---- Hospital ----
+        const hx = HOSPITAL_PX.x;
+        const hy = HOSPITAL_PX.y;
+        const pulse = Math.sin(Date.now() / 600) * 0.15 + 0.85;
+
+        ctx.save();
+        // Red cross on building roof
+        ctx.fillStyle = `rgba(220, 0, 0, ${pulse})`;
+        ctx.fillRect(hx - 10, hy - 34, 20, 68);
+        ctx.fillRect(hx - 34, hy - 10, 68, 20);
+        // White border on cross
+        ctx.strokeStyle = `rgba(255, 255, 255, 0.8)`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(hx - 10, hy - 34, 20, 68);
+        ctx.strokeRect(hx - 34, hy - 10, 68, 20);
+        // Label
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 3;
+        ctx.fillText('HOSPITAL', hx, hy + 60);
+        ctx.restore();
+
+        // ---- Police Station ----
+        const sx = STATION_PX.x;
+        const sy = STATION_PX.y;
+
+        ctx.save();
+        // "POLICE" sign on building roof
+        ctx.fillStyle = 'rgba(0, 40, 100, 0.85)';
+        ctx.fillRect(sx - 52, sy - 22, 104, 28);
+        ctx.strokeStyle = '#4488ff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(sx - 52, sy - 22, 104, 28);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 4;
+        ctx.fillText('POLICE', sx, sy - 8);
+        ctx.textBaseline = 'alphabetic';
+
+        // Parking lot lines (drawn over the road tiles at y=28..30)
+        const parkX = 27 * TILE;
+        const parkY = 28 * TILE;
+        const parkW = 6 * TILE;
+        const parkH = 3 * TILE;
+        ctx.fillStyle = 'rgba(20, 20, 40, 0.55)';
+        ctx.fillRect(parkX, parkY, parkW, parkH);
+        // 6 parking spaces
+        ctx.strokeStyle = 'rgba(255, 220, 0, 0.85)';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 6; i++) {
+            const px = parkX + i * TILE;
+            ctx.strokeRect(px + 4, parkY + 4, TILE - 8, parkH - 8);
+        }
+        // "PARKING" label
+        ctx.fillStyle = 'rgba(255,220,0,0.7)';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('PARKING', sx, parkY + parkH / 2 + 4);
+        ctx.restore();
     }
 
     drawStoreMarkers(ctx) {

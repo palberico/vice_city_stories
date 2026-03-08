@@ -60,6 +60,11 @@ class NPC {
 
     // Walk toward the nearest NPC-walkable tile — called when stuck on road/intersection
     _escapeToSidewalk(dt, spd, world) {
+        const isSidewalkSafe = (px, py) => {
+            const t = world.getTile(px, py);
+            return t === T.SIDEWALK || t === T.PARK || t === T.SAND;
+        };
+
         // Prefer reversing the way we came (works if we just aborted a crossing)
         const candidates = [
             this.crossAngle + Math.PI,
@@ -72,7 +77,7 @@ class NPC {
         for (const a of candidates) {
             const tx = this.x + Math.cos(a) * spd * dt * 3;
             const ty = this.y + Math.sin(a) * spd * dt * 3;
-            if (world.isNPCWalkable(tx, ty)) {
+            if (isSidewalkSafe(tx, ty)) {
                 this.angle = a;
                 this.x = tx; this.y = ty;
                 return;
@@ -82,7 +87,7 @@ class NPC {
         // Second pass: look further ahead to pick the best escape direction
         for (const a of candidates) {
             for (let d = TILE * 0.5; d <= TILE * 2; d += TILE * 0.5) {
-                if (world.isNPCWalkable(this.x + Math.cos(a) * d, this.y + Math.sin(a) * d)) {
+                if (isSidewalkSafe(this.x + Math.cos(a) * d, this.y + Math.sin(a) * d)) {
                     this.angle = a;
                     this.x += Math.cos(a) * spd * dt * 2;
                     this.y += Math.sin(a) * spd * dt * 2;
@@ -93,30 +98,21 @@ class NPC {
     }
 
     _updateWander(dt, spd, world) {
+        const isSidewalkSafe = (px, py) => {
+            const t = world.getTile(px, py);
+            return t === T.SIDEWALK || t === T.PARK || t === T.SAND;
+        };
+
         // Pick a new random direction periodically
         if (this.stateTimer <= 0) {
             this.angle = Math.random() * Math.PI * 2;
             this.stateTimer = 3 + Math.random() * 5;
         }
 
-        // If on a crosswalk tile and heading toward a road, commit to crossing
-        const curTile = world.getTile(this.x, this.y);
-        if (curTile === T.CROSSWALK) {
-            const peekX = this.x + Math.cos(this.angle) * TILE * 0.6;
-            const peekY = this.y + Math.sin(this.angle) * TILE * 0.6;
-            const peekTile = world.getTile(peekX, peekY);
-            if (peekTile === T.ROAD || peekTile === T.INTERSECTION) {
-                this.state = 'crossing';
-                this.crossAngle = this.angle;
-                this.stateTimer = 12; // max seconds to complete the crossing
-                return;
-            }
-        }
-
         const nx = this.x + Math.cos(this.angle) * spd * dt;
         const ny = this.y + Math.sin(this.angle) * spd * dt;
 
-        if (world.isNPCWalkable(nx, ny) && !world.checkBuildingCollision(nx - 8, ny - 8, 16, 16)) {
+        if (isSidewalkSafe(nx, ny) && !world.checkBuildingCollision(nx - 8, ny - 8, 16, 16)) {
             this.x = nx; this.y = ny;
         } else {
             // Push back slightly from obstruction
@@ -133,7 +129,7 @@ class NPC {
             for (const a of candidates) {
                 const tx = this.x + Math.cos(a) * spd * dt * 3;
                 const ty = this.y + Math.sin(a) * spd * dt * 3;
-                if (world.isNPCWalkable(tx, ty) && !world.checkBuildingCollision(tx - 8, ty - 8, 16, 16)) {
+                if (isSidewalkSafe(tx, ty) && !world.checkBuildingCollision(tx - 8, ty - 8, 16, 16)) {
                     this.angle = a;
                     this.stateTimer = 1.5 + Math.random() * 2;
                     turned = true;
@@ -181,6 +177,11 @@ class NPC {
     }
 
     _updateFlee(dt, spd, world) {
+        const isSidewalkSafe = (px, py) => {
+            const t = world.getTile(px, py);
+            return t === T.SIDEWALK || t === T.PARK || t === T.SAND;
+        };
+
         if (this.fleeTarget) {
             this.angle = Math.atan2(this.y - this.fleeTarget.y, this.x - this.fleeTarget.x);
         }
@@ -188,8 +189,8 @@ class NPC {
         const nx = this.x + Math.cos(this.angle) * spd * 2.5 * dt;
         const ny = this.y + Math.sin(this.angle) * spd * 2.5 * dt;
 
-        // Fleeing NPCs stay on NPC-safe tiles — no running into roads
-        if (world.isNPCWalkable(nx, ny)) {
+        // Fleeing NPCs stay on sidewalk-safe tiles — no running into roads
+        if (isSidewalkSafe(nx, ny)) {
             this.x = nx; this.y = ny;
         } else {
             // Try turning 90° left or right rather than freezing at a road edge
@@ -199,9 +200,9 @@ class NPC {
             const tyL = this.y + Math.sin(altLeft)  * spd * 2 * dt;
             const txR = this.x + Math.cos(altRight) * spd * 2 * dt;
             const tyR = this.y + Math.sin(altRight) * spd * 2 * dt;
-            if (world.isNPCWalkable(txL, tyL)) {
+            if (isSidewalkSafe(txL, tyL)) {
                 this.x = txL; this.y = tyL;
-            } else if (world.isNPCWalkable(txR, tyR)) {
+            } else if (isSidewalkSafe(txR, tyR)) {
                 this.x = txR; this.y = tyR;
             }
         }

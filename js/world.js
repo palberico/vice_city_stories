@@ -25,6 +25,11 @@ const TILE_COLORS = {
     [T.INTERSECTION]: '#3a3a3a'
 };
 
+// Special fixed locations — placed inside city blocks between road grid lines
+const HOSPITAL_PX = { x: 42 * TILE, y: 40 * TILE };
+const STATION_PX  = { x: 30 * TILE, y: 26 * TILE + TILE / 2 };
+const STATION_PARKING_PX = { x: 30 * TILE, y: 34 * TILE + TILE / 2 };
+
 class World {
     constructor() {
         this.tiles = [];
@@ -302,6 +307,57 @@ class World {
                             this.tiles[py + dy][px + dx] = T.PARK;
                         }
                     }
+                }
+            }
+        }
+
+        // ---- Hospital block (map center, between v=34/v=46 and h=32/h=44) ----
+        // Clear random buildings and place a single white hospital building
+        {
+            const HBX = 39, HBY = 37, HBW = 6, HBH = 6;
+            this.buildings = this.buildings.filter(b => {
+                const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
+                const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
+                return !(br >= HBX && bl < HBX + HBW && bb >= HBY && bt < HBY + HBH);
+            });
+            for (let ty = HBY; ty < HBY + HBH; ty++) {
+                for (let tx = HBX; tx < HBX + HBW; tx++) {
+                    this.tiles[ty][tx] = T.BUILDING;
+                }
+            }
+            this.buildings.push({
+                x: HBX * TILE, y: HBY * TILE,
+                w: HBW * TILE, h: HBH * TILE,
+                color: '#e0e8f0', height: 40,
+                windows: true, roofColor: '#d0d8e0'
+            });
+        }
+
+        // ---- Police station block (between v=22/v=34 and h=20/h=32) ----
+        // Upper 3 rows = building, lower 3 rows = parking lot (road tiles)
+        {
+            const SBX = 27, SBW = 6;
+            const SBuildY = 25, SBuildH = 3;
+            const SParkY = 28, SParkH = 3;
+            this.buildings = this.buildings.filter(b => {
+                const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
+                const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
+                return !(br >= SBX && bl < SBX + SBW && bb >= SBuildY && bt < SBuildY + SBuildH + SParkH);
+            });
+            for (let ty = SBuildY; ty < SBuildY + SBuildH; ty++) {
+                for (let tx = SBX; tx < SBX + SBW; tx++) {
+                    this.tiles[ty][tx] = T.BUILDING;
+                }
+            }
+            this.buildings.push({
+                x: SBX * TILE, y: SBuildY * TILE,
+                w: SBW * TILE, h: SBuildH * TILE,
+                color: '#334466', height: 40,
+                windows: true, roofColor: '#223355'
+            });
+            for (let ty = SParkY; ty < SParkY + SParkH; ty++) {
+                for (let tx = SBX; tx < SBX + SBW; tx++) {
+                    this.tiles[ty][tx] = T.ROAD;
                 }
             }
         }
