@@ -73,7 +73,17 @@ class Game {
     }
 
     async loadAssets() {
-        const assetList = ['player', 'car_sports', 'car_sedan', 'car_police', 'motorcycle', 'npc_sprites', 'logo'];
+        const assetList = [
+            'player', 'car_sports', 'car_sedan', 'car_police', 'motorcycle', 'logo',
+            'npc_business_man_front',      'npc_business_man_back',
+            'npc_business_man_front_walk', 'npc_business_man_back_walk',
+            'npc_beach_tourist_front',     'npc_beach_tourist_back',
+            'npc_beach_tourist_front_walk','npc_beach_tourist_back_walk',
+            'npc_casual_front',            'npc_casual_back',
+            'npc_casual_front_walk',       'npc_casual_back_walk',
+            'npc_jogger_front',            'npc_jogger_back',
+            'npc_jogger_front_walk',       'npc_jogger_back_walk',
+        ];
         const loadingBar = document.getElementById('loadingBar');
         const loadingScreen = document.getElementById('loading-screen');
         let loaded = 0;
@@ -99,7 +109,17 @@ class Game {
         await Promise.all(promises);
 
         // Remove checkered/white backgrounds from sprite images (not logo)
-        const spriteNames = ['player', 'car_sports', 'car_sedan', 'car_police', 'motorcycle', 'npc_sprites'];
+        const spriteNames = [
+            'player', 'car_sports', 'car_sedan', 'car_police', 'motorcycle',
+            'npc_business_man_front',      'npc_business_man_back',
+            'npc_business_man_front_walk', 'npc_business_man_back_walk',
+            'npc_beach_tourist_front',     'npc_beach_tourist_back',
+            'npc_beach_tourist_front_walk','npc_beach_tourist_back_walk',
+            'npc_casual_front',            'npc_casual_back',
+            'npc_casual_front_walk',       'npc_casual_back_walk',
+            'npc_jogger_front',            'npc_jogger_back',
+            'npc_jogger_front_walk',       'npc_jogger_back_walk',
+        ];
         for (const name of spriteNames) {
             if (this.images[name]) {
                 this.images[name] = this.removeBackground(this.images[name]);
@@ -236,7 +256,13 @@ class Game {
         }
 
         // NPCs
-        this.npcManager = new NPCManager(this.world, 150);
+        const npcCharacters = ['business_man', 'beach_tourist', 'casual', 'jogger'].map(name => ({
+            front:      this.images[`npc_${name}_front`],
+            back:       this.images[`npc_${name}_back`],
+            frontWalk:  this.images[`npc_${name}_front_walk`],
+            backWalk:   this.images[`npc_${name}_back_walk`],
+        }));
+        this.npcManager = new NPCManager(this.world, 150, npcCharacters);
 
         // Police
         this.police = new PoliceSystem();

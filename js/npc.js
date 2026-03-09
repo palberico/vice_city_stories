@@ -2,18 +2,20 @@
 // NPC SYSTEM
 // ============================================
 class NPC {
-    constructor(x, y, type, img) {
+    constructor(x, y, type, charSprites) {
         this.x = x; this.y = y;
         this.w = 16; this.h = 16;
         this.type = type; // 'pedestrian' or 'traffic'
         this.speed = 40 + Math.random() * 30;
-        this.angle = Math.random() * Math.PI * 2;
+        // Start facing a cardinal direction so movement aligns with the sidewalk grid
+        const CARD = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+        this.angle = CARD[Math.floor(Math.random() * 4)];
         this.health = 50;
         this.alive = true;
         this.state = 'wander'; // wander, crossing, flee
         this.stateTimer = 2 + Math.random() * 5;
-        this.img = img;
-        this.imgIndex = Math.floor(Math.random() * 4);
+        this.charSprites = charSprites; // { front, back, frontWalk, backWalk }
+        this.walkTimer = 0;
         this.fleeTarget = null;
         this.drop = null; // set on death: { type: 'cash'|'weapon', amount, weapon, ammo }
         this.crossAngle = 0;  // committed crossing direction
@@ -23,6 +25,7 @@ class NPC {
     update(dt, world, playerX, playerY, isShooting) {
         if (!this.alive) return;
 
+        this.walkTimer += dt;
         this.stateTimer -= dt;
         if (this.hurryTimer > 0) this.hurryTimer -= dt;
 
@@ -98,49 +101,54 @@ class NPC {
     }
 
     _updateWander(dt, spd, world) {
-        const isSidewalkSafe = (px, py) => {
+        const CARDINALS = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+
+        // Movement: sidewalk + intersection corners are walkable
+        const isSafe = (px, py) => {
             const t = world.getTile(px, py);
-            return t === T.SIDEWALK || t === T.PARK || t === T.SAND;
+            return (t === T.SIDEWALK || t === T.PARK || t === T.SAND || t === T.INTERSECTION)
+                && !world.checkBuildingCollision(px - 8, py - 8, 16, 16);
         };
 
-        // Pick a new random direction periodically
-        if (this.stateTimer <= 0) {
-            this.angle = Math.random() * Math.PI * 2;
-            this.stateTimer = 3 + Math.random() * 5;
+        // Look-ahead: scan through intersection tiles (they bridge sidewalk gaps at corners).
+        // Keep scanning until we find a real sidewalk tile (clear) or a hard blocker (road/building/water).
+        const pathClear = (angle) => {
+            for (let d = TILE * 0.75; d <= TILE * 8; d += TILE * 0.75) {
+                const t = world.getTile(
+                    this.x + Math.cos(angle) * d,
+                    this.y + Math.sin(angle) * d
+                );
+                if (t === T.SIDEWALK || t === T.PARK || t === T.SAND) return true;
+                if (t === T.INTERSECTION) continue; // pass through intersection corners
+                return false; // road, building, water — hard block
+            }
+            return false;
+        };
+
+        const aheadBlocked = !pathClear(this.angle);
+
+        if (aheadBlocked || this.stateTimer <= 0) {
+            // Score each cardinal: straight(4) > 90° turn(3) > U-turn(1)
+            const pool = [];
+            for (const a of CARDINALS) {
+                if (!pathClear(a)) continue;
+                const diff = Math.abs(((a - this.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+                const w = diff < 0.1 ? 4 : diff > Math.PI - 0.1 ? 1 : 3;
+                for (let i = 0; i < w; i++) pool.push(a);
+            }
+            if (pool.length > 0) {
+                this.angle = pool[Math.floor(Math.random() * pool.length)];
+            }
+            this.stateTimer = 10 + Math.random() * 15;
         }
 
         const nx = this.x + Math.cos(this.angle) * spd * dt;
         const ny = this.y + Math.sin(this.angle) * spd * dt;
 
-        if (isSidewalkSafe(nx, ny) && !world.checkBuildingCollision(nx - 8, ny - 8, 16, 16)) {
+        if (isSafe(nx, ny)) {
             this.x = nx; this.y = ny;
         } else {
-            // Push back slightly from obstruction
-            this.x -= Math.cos(this.angle) * 3;
-            this.y -= Math.sin(this.angle) * 3;
-
-            // Try 90° turns before reversing — keeps NPCs walking along sidewalks
-            const candidates = [
-                this.angle + Math.PI / 2,
-                this.angle - Math.PI / 2,
-                this.angle + Math.PI
-            ];
-            let turned = false;
-            for (const a of candidates) {
-                const tx = this.x + Math.cos(a) * spd * dt * 3;
-                const ty = this.y + Math.sin(a) * spd * dt * 3;
-                if (isSidewalkSafe(tx, ty) && !world.checkBuildingCollision(tx - 8, ty - 8, 16, 16)) {
-                    this.angle = a;
-                    this.stateTimer = 1.5 + Math.random() * 2;
-                    turned = true;
-                    break;
-                }
-            }
-            if (!turned) {
-                // Completely boxed in — pick a random open direction
-                this.angle = Math.random() * Math.PI * 2;
-                this.stateTimer = 1;
-            }
+            this.stateTimer = 0; // blocked mid-stride — force re-evaluation next frame
         }
     }
 
@@ -270,18 +278,34 @@ class NPC {
 
         ctx.save();
         ctx.translate(this.x, this.y);
-        ctx.rotate(this.angle + Math.PI / 2);
 
-        // Draw NPC as colored circle with simple body
-        const colors = ['#3366cc', '#cc6633', '#339933', '#cc3366'];
-        ctx.fillStyle = colors[this.imgIndex % colors.length];
-        ctx.beginPath();
-        ctx.arc(0, 0, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#ddb892';
-        ctx.beginPath();
-        ctx.arc(0, -4, 5, 0, Math.PI * 2);
-        ctx.fill();
+        const s = this.charSprites;
+        if (s) {
+            // Determine facing from movement angle
+            const sinA = Math.sin(this.angle);
+            const cosA = Math.cos(this.angle);
+            const facingDown = sinA >= 0; // positive-Y = toward camera = front sprite
+            const facingLeft  = cosA < -0.3 && Math.abs(cosA) > Math.abs(sinA);
+
+            // Alternate walk frames every 0.25 s
+            const walkStep = Math.floor(this.walkTimer / 0.25) % 2 === 1;
+
+            const sprite = facingDown
+                ? (walkStep ? s.frontWalk : s.front)
+                : (walkStep ? s.backWalk  : s.back);
+
+            if (sprite && sprite.complete && sprite.width > 0) {
+                const drawW = 18;
+                const drawH = sprite.height * (drawW / sprite.width);
+                if (facingLeft) ctx.scale(-1, 1); // mirror for leftward movement
+                ctx.drawImage(sprite, -drawW / 2, -drawH / 2, drawW, drawH);
+            }
+        } else {
+            ctx.fillStyle = '#888888';
+            ctx.beginPath();
+            ctx.arc(0, 0, 8, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         ctx.restore();
     }
@@ -292,13 +316,17 @@ class NPC {
 }
 
 class NPCManager {
-    constructor(world, count) {
+    constructor(world, count, characters) {
         this.npcs = [];
         this.world = world;
+        this.characters = Array.isArray(characters) ? characters : [];
         for (let i = 0; i < count; i++) {
             const sp = world.getRandomSpawnPoint();
             if (sp) {
-                this.npcs.push(new NPC(sp.x, sp.y, 'pedestrian', null));
+                const charSprites = this.characters.length > 0
+                    ? this.characters[Math.floor(Math.random() * this.characters.length)]
+                    : null;
+                this.npcs.push(new NPC(sp.x, sp.y, 'pedestrian', charSprites));
             }
         }
     }
