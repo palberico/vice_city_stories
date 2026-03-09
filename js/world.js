@@ -335,6 +335,34 @@ class World {
                 color: '#e0e8f0', height: 40,
                 windows: true, roofColor: '#d0d8e0'
             });
+
+            // Hospital sidewalk sprite overrides — render specific tiles with sidewalk assets
+            this.hospitalSidewalkSprites = new Map();
+            const left = HBX - 1, right = HBX + HBW, top = HBY - 1, bot = HBY + HBH;
+            const sw = (tx, ty, key, rot) => this.hospitalSidewalkSprites.set(`${tx},${ty}`, { key, rot: rot || 0 });
+
+            // Corners (corner.png rotated 90° CW at each successive corner going clockwise)
+            sw(left,  top, 'sidewalk/corner', 0);
+            sw(right, top, 'sidewalk/corner', Math.PI / 2);
+            sw(right, bot, 'sidewalk/corner', Math.PI);
+            sw(left,  bot, 'sidewalk/corner', -Math.PI / 2);
+
+            // Top edge — mostly top_plain, one top_sidewalk near centre
+            for (let x = HBX; x < HBX + HBW; x++) {
+                sw(x, top, x === HBX + 2 ? 'sidewalk/top_sidewalk' : 'sidewalk/top_plain', 0);
+            }
+            // Right edge — mostly right_plain, one right_sidewalk near centre
+            for (let y = HBY; y < HBY + HBH; y++) {
+                sw(right, y, y === HBY + 2 ? 'sidewalk/right_sidewalk' : 'sidewalk/right_plain', 0);
+            }
+            // Bottom edge — mostly bottom_plain, one bottom_sidewalk near centre
+            for (let x = HBX; x < HBX + HBW; x++) {
+                sw(x, bot, x === HBX + 3 ? 'sidewalk/bottom_sidewalk' : 'sidewalk/bottom_plain', 0);
+            }
+            // Left edge — mostly left_plain, one left_sidewalk near centre
+            for (let y = HBY; y < HBY + HBH; y++) {
+                sw(left, y, y === HBY + 3 ? 'sidewalk/left_sidewalk' : 'sidewalk/left_plain', 0);
+            }
         }
 
         // ---- Police station block (between v=22/v=34 and h=20/h=32) ----
@@ -478,7 +506,7 @@ class World {
         return tilePos * TILE + TILE / 2;
     }
 
-    draw(ctx, camera) {
+    draw(ctx, camera, images) {
         const startX = Math.max(0, Math.floor((camera.x - camera.width / 2 / camera.zoom) / TILE) - 1);
         const startY = Math.max(0, Math.floor((camera.y - camera.height / 2 / camera.zoom) / TILE) - 1);
         const endX = Math.min(WORLD_W, Math.ceil((camera.x + camera.width / 2 / camera.zoom) / TILE) + 1);
@@ -490,19 +518,32 @@ class World {
                 ctx.fillStyle = TILE_COLORS[tile] || '#333';
                 ctx.fillRect(x * TILE, y * TILE, TILE + 1, TILE + 1);
 
-                // Sidewalk curb detail — subtle line between sidewalk and road
+                // Sidewalk — sprite override (hospital) or default curb detail
                 if (tile === T.SIDEWALK) {
-                    // Check for adjacent road and draw a curb line
-                    ctx.fillStyle = '#9a9488';
-                    const top = y > 0 ? this.tiles[y - 1][x] : -1;
-                    const bot = y < WORLD_H - 1 ? this.tiles[y + 1][x] : -1;
-                    const lft = x > 0 ? this.tiles[y][x - 1] : -1;
-                    const rgt = x < WORLD_W - 1 ? this.tiles[y][x + 1] : -1;
-                    const isRoad = t => t === T.ROAD || t === T.CROSSWALK || t === T.INTERSECTION;
-                    if (isRoad(top)) ctx.fillRect(x * TILE, y * TILE, TILE, 2);
-                    if (isRoad(bot)) ctx.fillRect(x * TILE, y * TILE + TILE - 2, TILE, 2);
-                    if (isRoad(lft)) ctx.fillRect(x * TILE, y * TILE, 2, TILE);
-                    if (isRoad(rgt)) ctx.fillRect(x * TILE + TILE - 2, y * TILE, 2, TILE);
+                    const override = images && this.hospitalSidewalkSprites &&
+                        this.hospitalSidewalkSprites.get(`${x},${y}`);
+                    if (override) {
+                        const img = images[override.key];
+                        if (img && img.complete && img.width > 0) {
+                            ctx.save();
+                            ctx.translate(x * TILE + TILE / 2, y * TILE + TILE / 2);
+                            if (override.rot) ctx.rotate(override.rot);
+                            ctx.drawImage(img, -TILE / 2, -TILE / 2, TILE, TILE);
+                            ctx.restore();
+                        }
+                    } else {
+                        // Check for adjacent road and draw a curb line
+                        ctx.fillStyle = '#9a9488';
+                        const top = y > 0 ? this.tiles[y - 1][x] : -1;
+                        const bot = y < WORLD_H - 1 ? this.tiles[y + 1][x] : -1;
+                        const lft = x > 0 ? this.tiles[y][x - 1] : -1;
+                        const rgt = x < WORLD_W - 1 ? this.tiles[y][x + 1] : -1;
+                        const isRoad = t => t === T.ROAD || t === T.CROSSWALK || t === T.INTERSECTION;
+                        if (isRoad(top)) ctx.fillRect(x * TILE, y * TILE, TILE, 2);
+                        if (isRoad(bot)) ctx.fillRect(x * TILE, y * TILE + TILE - 2, TILE, 2);
+                        if (isRoad(lft)) ctx.fillRect(x * TILE, y * TILE, 2, TILE);
+                        if (isRoad(rgt)) ctx.fillRect(x * TILE + TILE - 2, y * TILE, 2, TILE);
+                    }
                 }
 
                 // Park decoration

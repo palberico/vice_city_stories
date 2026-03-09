@@ -29,7 +29,7 @@ const VEHICLE_TYPES = {
     sedan: { name: 'Admiral', topSpeed: 262, accel: 200, handling: 2.5, braking: 300, w: 28, h: 52, color: '#eeeecc', img: 'car_sedan', spriteRot: Math.PI / 2 },
     police: { name: 'Police', topSpeed: 349, accel: 260, handling: 2.8, braking: 340, w: 30, h: 55, color: '#222244', img: 'car_police', spriteRot: Math.PI / 2 },
     motorcycle: { name: 'PCJ-600', topSpeed: 480, accel: 320, handling: 4.0, braking: 250, w: 14, h: 30, color: '#333333', img: 'motorcycle', spriteRot: Math.PI / 2 },
-    helicopter: { name: 'Maverick', topSpeed: 349, accel: 150, handling: 1.5, braking: 100, w: 40, h: 40, color: '#990000', img: null, spriteRot: 0 }
+    helicopter: { name: 'Maverick', topSpeed: 349, accel: 150, handling: 1.5, braking: 100, w: 40, h: 40, color: '#990000', img: 'helicopter', spriteRot: 0 }
 };
 
 class Vehicle {
@@ -51,6 +51,7 @@ class Vehicle {
         this.health = 100;
         this.driver = null;
         this.img = images[spec.img] || null;
+        this.propellerImg = images['propeller'] || null;
         this.engineSoundTimer = 0;
         this.isPolicePatrol = false;
         this.isRepoTarget = false; // special mission car
@@ -544,49 +545,54 @@ class Vehicle {
             ctx.save();
             ctx.scale(bodyScale, bodyScale);
 
-            // Main body
-            ctx.fillStyle = this.customColor || this.color;
-            ctx.beginPath();
-            ctx.ellipse(0, 0, 22, 10, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = '#550000';
-            ctx.lineWidth = 1;
-            ctx.stroke();
+            if (this.img && this.img.complete && this.img.width > 0) {
+                // Sprite-based helicopter body
+                const drawW = 80;
+                const drawH = this.img.height * (drawW / this.img.width);
+                ctx.drawImage(this.img, -drawW / 2, -drawH / 2, drawW, drawH);
+            } else {
+                // Fallback procedural body
+                ctx.fillStyle = this.customColor || this.color;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 22, 10, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#550000';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(150, 200, 255, 0.6)';
+                ctx.beginPath();
+                ctx.ellipse(10, 0, 8, 7, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-35, -2, 20, 4);
+                ctx.fillStyle = '#666';
+                ctx.save();
+                ctx.translate(-35, 0);
+                ctx.rotate(this.rotorAngle * 2.5);
+                ctx.fillRect(-6, -1, 12, 2);
+                ctx.restore();
+            }
 
-            // Cockpit glass (front facing right)
-            ctx.fillStyle = 'rgba(150, 200, 255, 0.6)';
-            ctx.beginPath();
-            ctx.ellipse(10, 0, 8, 7, 0, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Tail boom (stretching left)
-            ctx.fillStyle = this.color;
-            ctx.fillRect(-35, -2, 20, 4);
-
-            // Tail rotor
-            ctx.fillStyle = '#666';
-            ctx.save();
-            ctx.translate(-35, 0);
-            ctx.rotate(this.rotorAngle * 2.5);
-            ctx.fillRect(-6, -1, 12, 2);
-            ctx.restore();
-
-            // Main rotor
+            // Propeller (main rotor) — spins on top of the body
             ctx.save();
             ctx.rotate(this.rotorAngle);
-            ctx.strokeStyle = 'rgba(200, 200, 200, 0.7)';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(-35, 0);
-            ctx.lineTo(35, 0);
-            ctx.moveTo(0, -35);
-            ctx.lineTo(0, 35);
-            ctx.stroke();
-            // Rotor blur disc
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-            ctx.beginPath();
-            ctx.arc(0, 0, 35, 0, Math.PI * 2);
-            ctx.fill();
+            if (this.propellerImg && this.propellerImg.complete && this.propellerImg.width > 0) {
+                const propW = 80;
+                const propH = this.propellerImg.height * (propW / this.propellerImg.width);
+                ctx.drawImage(this.propellerImg, -propW / 2, -propH / 2, propW, propH);
+            } else {
+                // Fallback procedural rotor
+                ctx.strokeStyle = 'rgba(200, 200, 200, 0.7)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(-35, 0); ctx.lineTo(35, 0);
+                ctx.moveTo(0, -35); ctx.lineTo(0, 35);
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.beginPath();
+                ctx.arc(0, 0, 35, 0, Math.PI * 2);
+                ctx.fill();
+            }
             ctx.restore();
 
             ctx.restore(); // end body scale

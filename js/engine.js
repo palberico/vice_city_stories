@@ -75,6 +75,12 @@ class Game {
     async loadAssets() {
         const assetList = [
             'player', 'car_sports', 'car_sedan', 'car_police', 'motorcycle', 'logo',
+            'helicopter', 'propeller',
+            'sidewalk/corner',
+            'sidewalk/top_plain', 'sidewalk/top_sidewalk',
+            'sidewalk/right_plain', 'sidewalk/right_sidewalk',
+            'sidewalk/bottom_plain', 'sidewalk/bottom_sidewalk',
+            'sidewalk/left_plain', 'sidewalk/left_sidewalk',
             'npc_business_man_front',      'npc_business_man_back',
             'npc_business_man_front_walk', 'npc_business_man_back_walk',
             'npc_beach_tourist_front',     'npc_beach_tourist_back',
@@ -108,9 +114,10 @@ class Game {
         });
         await Promise.all(promises);
 
-        // Remove checkered/white backgrounds from sprite images (not logo)
+        // Remove checkered/white backgrounds from sprite images (not logo, not sidewalk tiles)
         const spriteNames = [
             'player', 'car_sports', 'car_sedan', 'car_police', 'motorcycle',
+            'helicopter', 'propeller',
             'npc_business_man_front',      'npc_business_man_back',
             'npc_business_man_front_walk', 'npc_business_man_back_walk',
             'npc_beach_tourist_front',     'npc_beach_tourist_back',
@@ -633,7 +640,7 @@ class Game {
         this.camera.applyTransform(ctx);
 
         // Draw world tiles
-        this.world.draw(ctx, this.camera);
+        this.world.draw(ctx, this.camera, this.images);
 
         // Draw traffic light signals
         this.trafficLights.draw(ctx, this.camera, this.world.ROAD_WIDTH);

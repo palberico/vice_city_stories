@@ -20,6 +20,9 @@ class NPC {
         this.drop = null; // set on death: { type: 'cash'|'weapon', amount, weapon, ammo }
         this.crossAngle = 0;  // committed crossing direction
         this.hurryTimer = 0;  // >0 means a car is waiting — move faster to get clear
+        this.crossCooldown = 3 + Math.random() * 8; // counts down; when it hits 0 the NPC will cross at the next corner
+        this.wantsToCross = false;                   // true once cooldown expires — NPC crosses at next corner visited
+        this.crossOnRoad = false; // true once NPC has entered road/intersection during a crossing
     }
 
     update(dt, world, playerX, playerY, isShooting) {
@@ -28,6 +31,13 @@ class NPC {
         this.walkTimer += dt;
         this.stateTimer -= dt;
         if (this.hurryTimer > 0) this.hurryTimer -= dt;
+        if (this.crossCooldown > 0) this.crossCooldown -= dt;
+        // When the cooldown expires, arm the "wants to cross" flag — it stays true
+        // until the NPC actually reaches a corner and crosses.
+        if (this.crossCooldown <= 0 && !this.wantsToCross) {
+            this.wantsToCross = true;
+            this.crossCooldown = 15 + Math.random() * 10; // arm the next cooldown immediately
+        }
 
         const spd = this.speed * (this.hurryTimer > 0 ? 3 : 1);
 
@@ -46,6 +56,34 @@ class NPC {
             this.x = Math.max(TILE * 7, Math.min(WORLD_PX_W - TILE * 2, this.x));
             this.y = Math.max(TILE * 2, Math.min(WORLD_PX_H - TILE * 7, this.y));
             return;
+        }
+
+        // Street crossing — attempt whenever wantsToCross is armed AND NPC is at a corner.
+        // A corner tile has road/intersection adjacent in 2+ directions; mid-block only has 1.
+        if (this.state === 'wander' && this.wantsToCross && world.isNPCWalkable(this.x, this.y)) {
+            const CARDINALS = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+            const isRoadType = t => t === T.ROAD || t === T.INTERSECTION || t === T.CROSSWALK;
+            const roadDirs = CARDINALS.filter(a =>
+                isRoadType(world.getTile(this.x + Math.cos(a) * TILE, this.y + Math.sin(a) * TILE))
+            );
+            if (roadDirs.length >= 2) {
+                // At a corner — find a direction that crosses to a far sidewalk
+                const dirs = [...roadDirs].sort(() => Math.random() - 0.5);
+                crossSearch: for (const a of dirs) {
+                    for (let d = TILE * 2; d <= TILE * 8; d += TILE) {
+                        const t = world.getTile(this.x + Math.cos(a) * d, this.y + Math.sin(a) * d);
+                        if (t === T.SIDEWALK || t === T.PARK || t === T.SAND) {
+                            this.state = 'crossing';
+                            this.crossAngle = a;
+                            this.stateTimer = 15;
+                            this.crossOnRoad = false;
+                            this.wantsToCross = false;
+                            break crossSearch;
+                        }
+                        if (!isRoadType(t)) break;
+                    }
+                }
+            }
         }
 
         if (this.state === 'wander') {
@@ -155,8 +193,14 @@ class NPC {
     _updateCrossing(dt, spd, world) {
         const curTile = world.getTile(this.x, this.y);
 
-        // Successfully reached the other side
-        if (curTile === T.SIDEWALK || curTile === T.PARK || curTile === T.SAND || curTile === T.GRASS) {
+        // Track when NPC steps onto road/intersection territory
+        if (curTile === T.ROAD || curTile === T.INTERSECTION || curTile === T.CROSSWALK) {
+            this.crossOnRoad = true;
+        }
+
+        // Successfully reached the other side — only valid after actually crossing road
+        if (this.crossOnRoad && (curTile === T.SIDEWALK || curTile === T.PARK || curTile === T.SAND || curTile === T.GRASS)) {
+            this.crossOnRoad = false;
             this.state = 'wander';
             this.stateTimer = 1 + Math.random() * 2;
             return;
@@ -350,6 +394,8 @@ class NPCManager {
                     dead.state = 'wander';
                     dead.drop = null;
                     dead.hurryTimer = 0;
+                    dead.crossCooldown = 3 + Math.random() * 8;
+                    dead.crossOnRoad = false;
                 }
             }
         }
