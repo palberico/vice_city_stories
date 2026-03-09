@@ -77,18 +77,15 @@ class MenuSystem {
         ctx.fillStyle = 'rgba(255,255,255,0.5)';
         ctx.font = '14px "Segoe UI", Arial';
         const controls = [
-            'WASD / Arrows — Move / Drive',
-            'E — Enter / Exit Vehicle',
-            'Left Click — Shoot',
-            'Q — Switch Weapon',
-            'SHIFT — Sprint',
-            'SPACE — Handbrake',
-            'R — Change Radio Station',
-            'TAB — Phone (Missions)',
-            'ESC — Pause'
+            'WASD / Arrows — Move / Drive        E — Enter / Exit Vehicle',
+            'Left Click — Shoot                  Q — Switch Weapon',
+            'SHIFT — Sprint                      SPACE — Handbrake',
+            'F — Rob NPC                         R — Change Radio',
+            'TAB — Phone (Missions)              M — Full Map',
+            'I — Controls Info                   ESC — Pause',
         ];
         controls.forEach((c, i) => {
-            ctx.fillText(c, W / 2, H * 0.73 + i * 20);
+            ctx.fillText(c, W / 2, H * 0.73 + i * 22);
         });
 
         // Version

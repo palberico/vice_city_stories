@@ -186,7 +186,19 @@ class Game {
         this.player.weapons.pickupWeapon('shotgun', 15);
         this.player.weapons.currentWeapon = 'pistol';
 
-        // Spawn vehicles
+        // Define spray colors early so they can be used for vehicle spawning
+        this.sprayColors = [
+            { name: 'Crimson',  hex: '#cc2200' },
+            { name: 'Ocean',    hex: '#2255cc' },
+            { name: 'Gold',     hex: '#ccaa00' },
+            { name: 'Forest',   hex: '#228833' },
+            { name: 'Onyx',     hex: '#222222' },
+            { name: 'Pearl',    hex: '#dddddd' },
+            { name: 'Sunset',   hex: '#cc6600' },
+            { name: 'Royal',    hex: '#882299' },
+        ];
+
+        // Spawn vehicles with randomised colors
         this.vehicles = [];
         const vehicleTypes = ['sports', 'sedan', 'sedan', 'sports', 'motorcycle', 'sedan'];
         for (let i = 0; i < Math.min(20, this.world.vehicleSpawns.length); i++) {
@@ -194,6 +206,8 @@ class Game {
             const type = vehicleTypes[i % vehicleTypes.length];
             const vehicle = new Vehicle(spawn.x, spawn.y, type, this.images);
             vehicle.angle = spawn.angle;
+            // Assign a random paint color from the spray palette
+            vehicle.customColor = this.sprayColors[Math.floor(Math.random() * this.sprayColors.length)].hex;
             this.vehicles.push(vehicle);
         }
 
@@ -226,6 +240,11 @@ class Game {
         this.storeOpen = false;
         this.storeIndex = -1;
         this.storeCooldown = 0;
+
+        this.sprayOpen = false;
+        this.sprayCooldown = 0;
+        this.mapOpen = false;
+        this.infoOpen = false;
 
         // Audio
         this.audio.init();
@@ -291,6 +310,21 @@ class Game {
             this.menu.phoneOpen = !this.menu.phoneOpen;
         }
         if (this.menu.phoneOpen) return; // Freeze game when phone open
+
+        // Full map toggle
+        if (Input.isDown('m') && !this.menu.phoneOpen) {
+            Input.keys['m'] = false;
+            this.mapOpen = !this.mapOpen;
+            this.infoOpen = false;
+        }
+        if (this.mapOpen) return; // freeze game while map is open
+
+        // Info screen toggle
+        if (Input.isDown('i')) {
+            Input.keys['i'] = false;
+            this.infoOpen = !this.infoOpen;
+        }
+        if (this.infoOpen) return; // freeze game while info is open
 
         // Day/night cycle
         this.dayNight.time += this.dayNight.speed * dt;
@@ -421,6 +455,40 @@ class Game {
             }
         }
 
+        // Rob NPCs — press F near a living NPC
+        if (Input.isDown('f') && !this.player.inVehicle && this.player.alive) {
+            Input.keys['f'] = false;
+            let robbed = false;
+            for (const npc of this.npcManager.npcs) {
+                if (!npc.alive) continue;
+                if (Collision.dist(this.player.x, this.player.y, npc.x, npc.y) < 70) {
+                    const amount = 10 + Math.floor(Math.random() * 40);
+                    this.player.money += amount;
+                    this.hud.notify(`Robbed NPC — +$${amount}!`);
+                    this.audio.playPickup();
+                    // NPC flees
+                    npc.state = 'flee';
+                    npc.stateTimer = 5;
+                    npc.fleeTarget = { x: this.player.x, y: this.player.y };
+                    // Witness check — any police or NPC within 250px (excluding the victim)
+                    const witnessed = this.police.patrolUnits.some(u =>
+                        u.alive && u.vehicle && Collision.dist(this.player.x, this.player.y, u.vehicle.x, u.vehicle.y) < 300
+                    ) || this.npcManager.npcs.some(n =>
+                        n !== npc && n.alive && Collision.dist(this.player.x, this.player.y, n.x, n.y) < 200
+                    );
+                    if (witnessed) {
+                        this.player.addWanted(1, this.audio);
+                        this.hud.notify('Witness called the cops!');
+                    }
+                    robbed = true;
+                    break;
+                }
+            }
+            if (!robbed) {
+                this.hud.notify('No one nearby to rob.');
+            }
+        }
+
         // Camera
         this.camera.setZoom(this.player.inVehicle ? 0.7 : 1.0);
         this.camera.follow(this.player, dt);
@@ -464,6 +532,9 @@ class Game {
 
         // Weapon Store interaction
         this.updateStore(dt);
+
+        // Pay & Spray interaction
+        this.updatePaySpray(dt);
 
         // AI-driven vehicles stop for pedestrians and signal them to hurry
         for (const v of this.vehicles) {
@@ -576,10 +647,140 @@ class Game {
             this.drawStoreUI(ctx, this.canvas);
         }
 
+        // Pay & Spray overlay
+        this.drawPaySprayUI(ctx, this.canvas);
+
         // Phone overlay
         if (this.menu.phoneOpen) {
             this.menu.drawPhone(ctx, this.canvas, this.missions);
         }
+
+        // Full map overlay (drawn last so it appears on top of everything)
+        this.drawFullMap(ctx, this.canvas);
+
+        // Info screen overlay
+        this.drawInfoScreen(ctx, this.canvas);
+    }
+
+    drawInfoScreen(ctx, canvas) {
+        if (!this.infoOpen) return;
+        const W = canvas.width, H = canvas.height;
+
+        ctx.save();
+        // Dark backdrop
+        ctx.fillStyle = 'rgba(0,0,0,0.88)';
+        ctx.fillRect(0, 0, W, H);
+
+        // Panel
+        const pw = Math.min(700, W - 60), ph = Math.min(520, H - 60);
+        const px = (W - pw) / 2, py = (H - ph) / 2;
+        ctx.fillStyle = '#0d0d1a';
+        ctx.strokeStyle = '#ff1493';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(px, py, pw, ph, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        // Title
+        ctx.fillStyle = '#ff1493';
+        ctx.font = 'bold 22px "Segoe UI", Arial';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#ff1493';
+        ctx.shadowBlur = 12;
+        ctx.fillText('CONTROLS & INFO', W / 2, py + 38);
+        ctx.shadowBlur = 0;
+
+        // Divider
+        ctx.strokeStyle = 'rgba(255,20,147,0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(px + 20, py + 50); ctx.lineTo(px + pw - 20, py + 50);
+        ctx.stroke();
+
+        // Two-column layout
+        const col1X = px + 30, col2X = px + pw / 2 + 10;
+        const startY = py + 72;
+        const lineH = 26;
+
+        const sections = [
+            {
+                title: 'ON FOOT', col: 0, items: [
+                    ['WASD / Arrows', 'Move'],
+                    ['Shift', 'Sprint'],
+                    ['Left Click', 'Shoot'],
+                    ['Q', 'Switch Weapon'],
+                    ['E', 'Enter Vehicle'],
+                    ['F', 'Rob Nearby NPC'],
+                ]
+            },
+            {
+                title: 'IN VEHICLE', col: 1, items: [
+                    ['WASD / Arrows', 'Drive'],
+                    ['Space', 'Handbrake / Brake'],
+                    ['E', 'Exit Vehicle'],
+                    ['R', 'Change Radio Station'],
+                    ['Left Click', 'Shoot from Car'],
+                ]
+            },
+            {
+                title: 'GENERAL', col: 0, rowOffset: 8, items: [
+                    ['Tab', 'Phone — Missions'],
+                    ['M', 'Full City Map'],
+                    ['I', 'This Info Screen'],
+                    ['Esc', 'Pause / Resume'],
+                ]
+            },
+            {
+                title: 'LOCATIONS', col: 1, rowOffset: 7, items: [
+                    ['Red Cross ✚', 'Hospital — Respawn'],
+                    ['Blue P', 'Police Station'],
+                    ['Orange S', 'Pay & Spray — $500'],
+                    ['Green $', 'Ammu-Nation Store'],
+                ]
+            },
+        ];
+
+        for (const sec of sections) {
+            const baseX = sec.col === 0 ? col1X : col2X;
+            const rowOff = sec.rowOffset || 0;
+            const baseY = startY + rowOff * lineH;
+
+            // Section header
+            ctx.fillStyle = '#00ffff';
+            ctx.font = 'bold 12px "Segoe UI", Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(sec.title, baseX, baseY);
+
+            // Items
+            ctx.font = '12px "Segoe UI", Arial';
+            sec.items.forEach((item, i) => {
+                const y = baseY + (i + 1) * lineH;
+                ctx.fillStyle = '#ffcc00';
+                ctx.fillText(`[${item[0]}]`, baseX + 10, y);
+                ctx.fillStyle = '#cccccc';
+                ctx.fillText(item[1], baseX + 115, y);
+            });
+        }
+
+        // Tips section at bottom
+        const tipY = py + ph - 52;
+        ctx.strokeStyle = 'rgba(255,20,147,0.3)';
+        ctx.beginPath();
+        ctx.moveTo(px + 20, tipY - 8); ctx.lineTo(px + pw - 20, tipY - 8);
+        ctx.stroke();
+        ctx.fillStyle = '#888';
+        ctx.font = 'italic 11px "Segoe UI", Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Tip: Earn money by completing missions, robbing NPCs, or collecting cash drops from defeated enemies.', W / 2, tipY + 8);
+        ctx.fillText('Pay & Spray repairs your car, repaints it, and clears your wanted level for $500.', W / 2, tipY + 24);
+
+        // Close hint
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.font = '12px "Segoe UI", Arial';
+        ctx.fillText('[I]  Close', W / 2, py + ph - 12);
+
+        ctx.restore();
     }
 
     getSkyColor() {
@@ -722,6 +923,165 @@ class Game {
         }
     }
 
+    updatePaySpray(dt) {
+        this.sprayCooldown = Math.max(0, this.sprayCooldown - dt);
+        const near = this.player.inVehicle &&
+            Collision.dist(this.player.x, this.player.y, PAY_SPRAY_PX.x, PAY_SPRAY_PX.y) < 200;
+
+        if (near) {
+            this.sprayOpen = true;
+            if (this.sprayCooldown <= 0) {
+                // Number keys 1-8 pick color + repair
+                for (let i = 0; i < this.sprayColors.length; i++) {
+                    const key = String(i + 1);
+                    if (Input.isDown(key)) {
+                        Input.keys[key] = false;
+                        const cost = 500;
+                        if (this.player.money >= cost) {
+                            this.player.money -= cost;
+                            this.player.inVehicle.customColor = this.sprayColors[i].hex;
+                            this.player.inVehicle.health = 200;
+                            this.player.wantedLevel = 0;
+                            this.hud.notify(`Repainted ${this.sprayColors[i].name} & repaired — $${cost}  ★ Cleared!`);
+                            this.audio.playPickup();
+                            this.sprayCooldown = 1.0;
+                        } else {
+                            this.hud.notify('Not enough money! Need $500');
+                            this.sprayCooldown = 0.5;
+                        }
+                        break;
+                    }
+                }
+            }
+        } else {
+            this.sprayOpen = false;
+        }
+    }
+
+    _drawMiniCar(ctx, cx, cy, color, type) {
+        // Draws a top-down car silhouette centred at (cx, cy)
+        const isMoto = type === 'motorcycle';
+        const bw = isMoto ? 10 : 26;  // body width
+        const bh = isMoto ? 34 : 48;  // body height
+
+        // Body
+        ctx.fillStyle = color;
+        ctx.fillRect(cx - bw / 2, cy - bh / 2, bw, bh);
+
+        if (isMoto) {
+            // Front wheel
+            ctx.fillStyle = '#111';
+            ctx.beginPath(); ctx.ellipse(cx, cy - bh / 2 - 3, 4, 6, 0, 0, Math.PI * 2); ctx.fill();
+            // Rear wheel
+            ctx.beginPath(); ctx.ellipse(cx, cy + bh / 2 + 3, 4, 6, 0, 0, Math.PI * 2); ctx.fill();
+            // Seat stripe
+            ctx.fillStyle = 'rgba(0,0,0,0.35)';
+            ctx.fillRect(cx - bw / 2 + 2, cy - 6, bw - 4, 12);
+        } else {
+            // Windshield
+            ctx.fillStyle = 'rgba(160, 220, 255, 0.8)';
+            ctx.fillRect(cx - bw / 2 + 3, cy - bh / 2 + 6, bw - 6, bh * 0.24);
+            // Roof shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.22)';
+            ctx.fillRect(cx - bw / 2 + 4, cy - bh / 2 + 6 + bh * 0.24, bw - 8, bh * 0.2);
+            // Rear window
+            ctx.fillStyle = 'rgba(160, 220, 255, 0.5)';
+            ctx.fillRect(cx - bw / 2 + 3, cy + bh * 0.06, bw - 6, bh * 0.16);
+            // Taillights
+            ctx.fillStyle = '#ff2222';
+            ctx.fillRect(cx - bw / 2 + 1, cy + bh / 2 - 6, (bw / 2) - 2, 5);
+            ctx.fillStyle = '#ff8800';
+            ctx.fillRect(cx + 1, cy + bh / 2 - 6, (bw / 2) - 2, 5);
+            // Headlights
+            ctx.fillStyle = '#ffffaa';
+            ctx.fillRect(cx - bw / 2 + 2, cy - bh / 2 + 1, (bw / 2) - 2, 4);
+            ctx.fillRect(cx + 1, cy - bh / 2 + 1, (bw / 2) - 2, 4);
+            // Wheels
+            ctx.fillStyle = '#111';
+            const ww = 5, wh = 9;
+            ctx.fillRect(cx - bw / 2 - ww + 1, cy - bh / 2 + 7, ww, wh);
+            ctx.fillRect(cx + bw / 2 - 1,       cy - bh / 2 + 7, ww, wh);
+            ctx.fillRect(cx - bw / 2 - ww + 1, cy + bh / 2 - 16, ww, wh);
+            ctx.fillRect(cx + bw / 2 - 1,       cy + bh / 2 - 16, ww, wh);
+        }
+    }
+
+    drawPaySprayUI(ctx, canvas) {
+        if (!this.sprayOpen) return;
+        const W = canvas.width, H = canvas.height;
+        const vehicle = this.player.inVehicle;
+        const vtype = vehicle ? vehicle.type : 'sedan';
+        const currentColor = vehicle ? (vehicle.customColor || VEHICLE_TYPES[vtype].color) : '#888';
+
+        // Panel — wider to fit car previews
+        const pw = 520, ph = 310;
+        const px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.82)';
+        ctx.fillRect(px, py, pw, ph);
+        ctx.strokeStyle = '#ff6600';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px, py, pw, ph);
+
+        // Title
+        ctx.fillStyle = '#ff6600';
+        ctx.font = 'bold 18px "Segoe UI", Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('PAY & SPRAY', W / 2, py + 26);
+
+        // Current car + color indicator
+        ctx.fillStyle = '#bbb';
+        ctx.font = '11px "Segoe UI", Arial';
+        ctx.fillText(`Current: ${VEHICLE_TYPES[vtype].name}`, W / 2 - 70, py + 46);
+        ctx.fillStyle = currentColor;
+        ctx.fillRect(W / 2 + 10, py + 35, 28, 14);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(W / 2 + 10, py + 35, 28, 14);
+
+        ctx.fillStyle = '#888';
+        ctx.font = '11px "Segoe UI", Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Choose a color — $500 repairs, repaints & clears stars', W / 2, py + 62);
+
+        // 8 swatches: 4 columns × 2 rows, each with a mini car
+        const swW = 110, swH = 110;
+        const cols = 4;
+        const gridX = px + (pw - cols * swW) / 2;
+        const gridY = py + 74;
+
+        for (let i = 0; i < this.sprayColors.length; i++) {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const bx = gridX + col * swW;
+            const by = gridY + row * swH;
+            const sc = this.sprayColors[i];
+            const isSelected = vehicle && vehicle.customColor === sc.hex;
+
+            // Swatch background
+            ctx.fillStyle = isSelected ? 'rgba(255,150,0,0.25)' : 'rgba(255,255,255,0.06)';
+            ctx.fillRect(bx + 2, by + 2, swW - 4, swH - 4);
+            ctx.strokeStyle = isSelected ? '#ff9900' : 'rgba(255,255,255,0.2)';
+            ctx.lineWidth = isSelected ? 2 : 1;
+            ctx.strokeRect(bx + 2, by + 2, swW - 4, swH - 4);
+
+            // Mini car centred in top part of swatch
+            ctx.save();
+            ctx.translate(bx + swW / 2, by + 44);
+            this._drawMiniCar(ctx, 0, 0, sc.hex, vtype);
+            ctx.restore();
+
+            // Color name + key
+            ctx.fillStyle = isSelected ? '#ff9900' : '#ddd';
+            ctx.font = `${isSelected ? 'bold ' : ''}11px "Segoe UI", Arial`;
+            ctx.textAlign = 'center';
+            ctx.fillText(`[${i + 1}] ${sc.name}`, bx + swW / 2, by + swH - 16);
+        }
+
+        ctx.restore();
+    }
+
     _drawSpecialLocations(ctx) {
         // ---- Hospital ----
         const hx = HOSPITAL_PX.x;
@@ -786,6 +1146,29 @@ class Game {
         ctx.font = 'bold 10px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('PARKING', sx, parkY + parkH / 2 + 4);
+        ctx.restore();
+
+        // ---- Pay & Spray ----
+        const px = PAY_SPRAY_PX.x;
+        const py = PAY_SPRAY_PX.y;
+        const psPulse = Math.sin(Date.now() / 400) * 0.2 + 0.8;
+        ctx.save();
+        ctx.fillStyle = `rgba(255, 100, 0, ${0.3 * psPulse})`;
+        ctx.fillRect(px - 64, py - 32, 128, 64);
+        ctx.strokeStyle = `rgba(255, 140, 0, ${psPulse})`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px - 64, py - 32, 128, 64);
+        ctx.fillStyle = '#ff6600';
+        ctx.font = 'bold 13px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 4;
+        ctx.fillText('PAY & SPRAY', px, py - 8);
+        ctx.fillStyle = '#ffaa44';
+        ctx.font = '10px Arial';
+        ctx.fillText('Drive in with a car', px, py + 8);
+        ctx.textBaseline = 'alphabetic';
         ctx.restore();
     }
 
@@ -953,6 +1336,142 @@ class Game {
                 this.player.takeDamage(dmg);
             }
         }
+    }
+
+    drawFullMap(ctx, canvas) {
+        if (!this.mapOpen) return;
+        const W = canvas.width, H = canvas.height;
+
+        // Darken background
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(0, 0, W, H);
+
+        // Map dimensions — fit to screen with padding
+        const padding = 40;
+        const mapW = W - padding * 2;
+        const mapH = H - padding * 2;
+        const scaleX = mapW / WORLD_PX_W;
+        const scaleY = mapH / WORLD_PX_H;
+        const scale = Math.min(scaleX, scaleY);
+        const offX = padding + (mapW - WORLD_PX_W * scale) / 2;
+        const offY = padding + (mapH - WORLD_PX_H * scale) / 2;
+
+        // Draw tile grid (sampled)
+        const sampleStep = 2; // draw every 2 tiles for speed
+        for (let ty = 0; ty < WORLD_H; ty += sampleStep) {
+            for (let tx = 0; tx < WORLD_W; tx += sampleStep) {
+                const tile = this.world.tiles[ty][tx];
+                let color;
+                switch (tile) {
+                    case 4: case 5: case 8: color = '#444'; break; // road/crosswalk/intersection
+                    case 0: color = '#1a5276'; break; // water
+                    case 1: color = '#d4b98a'; break; // sand
+                    case 2: color = '#2d8a4e'; break; // grass
+                    case 3: color = '#888'; break;     // sidewalk
+                    case 6: color = '#555'; break;     // building
+                    case 7: color = '#1e7a3a'; break;  // park
+                    default: color = '#2d8a4e';
+                }
+                ctx.fillStyle = color;
+                ctx.fillRect(
+                    offX + tx * TILE * scale,
+                    offY + ty * TILE * scale,
+                    TILE * scale * sampleStep + 1,
+                    TILE * scale * sampleStep + 1
+                );
+            }
+        }
+
+        // Hospital blip
+        ctx.fillStyle = '#ff2222';
+        ctx.fillRect(offX + HOSPITAL_PX.x * scale - 1, offY + HOSPITAL_PX.y * scale - 4, 2, 8);
+        ctx.fillRect(offX + HOSPITAL_PX.x * scale - 4, offY + HOSPITAL_PX.y * scale - 1, 8, 2);
+
+        // Police station blip
+        const spx = offX + STATION_PX.x * scale, spy = offY + STATION_PX.y * scale;
+        ctx.fillStyle = '#4466ff';
+        ctx.beginPath(); ctx.arc(spx, spy, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 6px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('P', spx, spy);
+
+        // Pay & Spray blip
+        const psx = offX + PAY_SPRAY_PX.x * scale, psy = offY + PAY_SPRAY_PX.y * scale;
+        ctx.fillStyle = '#ff6600';
+        ctx.beginPath(); ctx.arc(psx, psy, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 6px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('S', psx, psy);
+
+        // Ammu-Nation blips
+        ctx.textBaseline = 'middle';
+        for (const store of this.stores) {
+            const sx = offX + store.x * scale, sy = offY + store.y * scale;
+            ctx.fillStyle = '#00aa44';
+            ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 5px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('$', sx, sy);
+        }
+
+        // Mission markers
+        const target = this.missions.getTargetPosition();
+        if (target) {
+            const tx = offX + target.x * scale, ty2 = offY + target.y * scale;
+            ctx.fillStyle = '#ffaa00';
+            ctx.beginPath(); ctx.arc(tx, ty2, 5, 0, Math.PI * 2); ctx.fill();
+        }
+        for (const marker of this.missions.missionMarkers) {
+            ctx.fillStyle = '#ffff00';
+            ctx.beginPath();
+            ctx.arc(offX + marker.x * scale, offY + marker.y * scale, 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Player blip
+        const plx = offX + this.player.x * scale;
+        const ply = offY + this.player.y * scale;
+        ctx.fillStyle = '#00ff00';
+        ctx.beginPath(); ctx.arc(plx, ply, 5, 0, Math.PI * 2); ctx.fill();
+        // Direction arrow
+        ctx.strokeStyle = '#00ff00';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(plx, ply);
+        ctx.lineTo(plx + Math.cos(this.player.angle) * 12, ply + Math.sin(this.player.angle) * 12);
+        ctx.stroke();
+
+        // Title
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 16px "Segoe UI", Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText('VICE CITY — FULL MAP', W / 2, padding - 10);
+        ctx.fillStyle = '#aaa';
+        ctx.font = '11px Arial';
+        ctx.fillText('[M] Close', W / 2, H - 10);
+
+        // Legend
+        const legX = offX + WORLD_PX_W * scale + 10;
+        if (legX + 80 < W) {
+            const items = [
+                { color: '#00ff00', label: 'You' },
+                { color: '#ff2222', label: 'Hospital' },
+                { color: '#4466ff', label: 'Police' },
+                { color: '#ff6600', label: 'Pay & Spray' },
+                { color: '#00aa44', label: 'Ammu-Nation' },
+                { color: '#ffaa00', label: 'Mission' },
+            ];
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            items.forEach((item, i) => {
+                ctx.fillStyle = item.color;
+                ctx.fillRect(legX, offY + i * 20, 10, 10);
+                ctx.fillStyle = '#ccc';
+                ctx.font = '10px Arial';
+                ctx.fillText(item.label, legX + 14, offY + i * 20 + 5);
+            });
+        }
+
+        ctx.restore();
     }
 
 }

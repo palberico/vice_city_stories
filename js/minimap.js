@@ -128,6 +128,21 @@ class Minimap {
             ctx.fillText('P', mx, my);
         }
 
+        // Pay & Spray blip
+        {
+            const mx = offsetX + PAY_SPRAY_PX.x * this.scale * mapScale;
+            const my = offsetY + PAY_SPRAY_PX.y * this.scale * mapScale;
+            ctx.fillStyle = '#ff6600';
+            ctx.beginPath();
+            ctx.arc(mx, my, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 5px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('S', mx, my);
+        }
+
         // Player blip
         ctx.fillStyle = '#00ff00';
         ctx.beginPath();

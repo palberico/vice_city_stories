@@ -84,13 +84,25 @@ class HUD {
             ctx.font = '11px "Segoe UI", Arial';
             ctx.fillText(`${Math.abs(Math.round(player.inVehicle.speed * (220 / 480)))} mph`, W / 2, H - 10);
 
+            // Vehicle health bar
+            const vhRatio = Math.max(0, player.inVehicle.health / 200);
+            const vhColor = vhRatio > 0.6 ? '#00cc44' : vhRatio > 0.3 ? '#ccaa00' : '#cc3300';
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(W / 2 - 100, H - 57, 200, 10);
+            ctx.fillStyle = vhColor;
+            ctx.fillRect(W / 2 - 100, H - 57, 200 * vhRatio, 10);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 8px "Segoe UI", Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText('CAR', W / 2 - 100 - 24, H - 49);
+
             // Radio station
             const stations = ['♫ Synthwave FM', '♫ Vice Beats', '♫ Neon Dance'];
             if (audio.radioPlaying) {
                 ctx.fillStyle = '#ffaa00';
                 ctx.font = '11px "Segoe UI", Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText(stations[audio.radioStation] + '  [R] Change', W / 2, H - 52);
+                ctx.fillText(stations[audio.radioStation] + '  [R] Change', W / 2, H - 70);
             }
         }
 
@@ -146,7 +158,7 @@ class HUD {
         } else {
             ctx.fillStyle = 'rgba(255,255,255,0.3)';
             ctx.font = '10px "Segoe UI", Arial';
-            ctx.fillText('WASD:Drive  Space:Brake  E:Exit  R:Radio  Click:Shoot  ESC:Pause', 20, 42);
+            ctx.fillText('WASD:Drive  Space:Brake  E:Exit  R:Radio  Click:Shoot  ESC:Pause  F:Rob  M:Map', 20, 42);
         }
 
         // ---- Notifications ----

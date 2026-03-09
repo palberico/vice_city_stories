@@ -23,6 +23,7 @@ class Player {
         this.alive = true;
         this.respawnTimer = 0;
         this.enterCooldown = 0;
+        this.isSwimming = false;
     }
 
     update(dt, world, vehicles, audio, particles) {
@@ -78,16 +79,31 @@ class Player {
             if (Input.isDown('a') || Input.isDown('arrowleft')) dx = -1;
             if (Input.isDown('d') || Input.isDown('arrowright')) dx = 1;
 
+            // Check if currently on water
+            const currentTile = world.getTile(this.x, this.y);
+            if (currentTile === T.WATER) {
+                this.isSwimming = true;
+            } else {
+                this.isSwimming = false;
+            }
+
             if (dx !== 0 || dy !== 0) {
                 const len = Math.sqrt(dx * dx + dy * dy);
                 dx /= len; dy /= len;
-                const newX = this.x + dx * spd * dt;
-                const newY = this.y + dy * spd * dt;
+                const swimSpd = this.isSwimming ? spd * 0.35 : spd;
+                const newX = this.x + dx * swimSpd * dt;
+                const newY = this.y + dy * swimSpd * dt;
                 this.angle = Math.atan2(dy, dx);
                 this.moving = true;
 
-                if (world.isWalkable(newX, this.y)) this.x = newX;
-                if (world.isWalkable(this.x, newY)) this.y = newY;
+                if (this.isSwimming) {
+                    // While swimming, allow movement unless hitting a building
+                    if (world.getTile(newX, this.y) !== T.BUILDING) this.x = newX;
+                    if (world.getTile(this.x, newY) !== T.BUILDING) this.y = newY;
+                } else {
+                    if (world.isWalkable(newX, this.y)) this.x = newX;
+                    if (world.isWalkable(this.x, newY)) this.y = newY;
+                }
 
                 // Building collision
                 const bCol = world.checkBuildingCollision(this.x - this.w / 2, this.y - this.h / 2, this.w, this.h);
@@ -103,6 +119,16 @@ class Player {
                 if (this.footstepTimer <= 0) {
                     audio.playFootstep();
                     this.footstepTimer = sprint ? 0.25 : 0.4;
+                }
+            }
+
+            // Swimming damage
+            if (this.isSwimming) {
+                this.health -= 3 * dt;
+                if (this.health <= 0) {
+                    this.health = 0;
+                    this.alive = false;
+                    this.respawnTimer = 3;
                 }
             }
 
@@ -216,6 +242,16 @@ class Player {
 
         ctx.save();
         ctx.translate(this.x, this.y);
+
+        // Swimming ring effect (drawn before sprite, in un-rotated space)
+        if (this.isSwimming) {
+            ctx.strokeStyle = 'rgba(30, 100, 255, 0.7)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, 0, 14, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
         ctx.rotate(this.angle + Math.PI / 2);
 
         if (this.img && this.img.complete) {

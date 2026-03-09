@@ -29,6 +29,7 @@ const TILE_COLORS = {
 const HOSPITAL_PX = { x: 42 * TILE, y: 40 * TILE };
 const STATION_PX  = { x: 30 * TILE, y: 26 * TILE + TILE / 2 };
 const STATION_PARKING_PX = { x: 30 * TILE, y: 34 * TILE + TILE / 2 };
+const PAY_SPRAY_PX = { x: 52 * TILE + TILE / 2, y: 55 * TILE + TILE / 2 };
 
 class World {
     constructor() {

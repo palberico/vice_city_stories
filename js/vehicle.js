@@ -1,6 +1,26 @@
 // ============================================
 // VEHICLE SYSTEM
 // ============================================
+
+// Converts a #rrggbb hex color to { h, s, l } (h in 0-360, s and l in 0-100)
+function hexToHsl(hex) {
+    let r = parseInt(hex.slice(1, 3), 16) / 255;
+    let g = parseInt(hex.slice(3, 5), 16) / 255;
+    let b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    const l = (max + min) / 2;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+            case g: h = ((b - r) / d + 2) / 6; break;
+            case b: h = ((r - g) / d + 4) / 6; break;
+        }
+    }
+    return { h: h * 360, s: s * 100, l: l * 100 };
+}
 const VEHICLE_TYPES = {
     // spriteRot: rotation offset to align sprite "up" direction with angle=0 (right)
     // Sprites with front at BOTTOM of image: -PI/2 (sports)
@@ -37,6 +57,7 @@ class Vehicle {
         this.rotorAngle = 0; // for helicopter
         this.idleTimer = 0; // Tracks consecutive seconds of being stopped
         this.isWreck = false; // true once destroyed and left as a burnt-out shell
+        this.customColor = null;
 
         // NPC AI driving
         this.ai = {
@@ -456,11 +477,7 @@ class Vehicle {
         // Use per-type rotation offset so each sprite faces the right way
         ctx.rotate(this.angle + this.spriteRot);
 
-        if (this.img && this.img.complete) {
-            let scale = Math.max(this.w / this.img.width, this.h / this.img.height) * 2.2;
-            if (this.type === 'motorcycle') scale *= 0.7;
-            ctx.drawImage(this.img, -this.img.width * scale / 2, -this.img.height * scale / 2, this.img.width * scale, this.img.height * scale);
-        } else if (this.type === 'helicopter') {
+        if (this.type === 'helicopter') {
             // Shadow
             ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
             ctx.beginPath();
@@ -470,7 +487,7 @@ class Vehicle {
             // Fuselage setup
             // Angle 0 faces right.
             // Main body
-            ctx.fillStyle = this.color;
+            ctx.fillStyle = this.customColor || this.color;
             ctx.beginPath();
             ctx.ellipse(0, 0, 22, 10, 0, 0, Math.PI * 2);
             ctx.fill();
@@ -514,21 +531,22 @@ class Vehicle {
             ctx.fill();
             ctx.restore();
 
+        } else if (this.img && this.img.complete) {
+            if (this.customColor) ctx.filter = this._colorFilter();
+            let scale = Math.max(this.w / this.img.width, this.h / this.img.height) * 2.2;
+            if (this.type === 'motorcycle') scale *= 0.7;
+            ctx.drawImage(this.img, -this.img.width * scale / 2, -this.img.height * scale / 2, this.img.width * scale, this.img.height * scale);
+            ctx.filter = 'none';
         } else {
-            ctx.fillStyle = this.color;
-            ctx.fillRect(-this.w / 2, -this.h / 2, this.w, this.h);
-            ctx.fillStyle = 'rgba(150,200,255,0.6)';
-            ctx.fillRect(-this.w / 2 + 4, -this.h / 2 + 5, this.w - 8, 10);
-            ctx.fillStyle = '#ff0000';
-            ctx.fillRect(-this.w / 2, this.h / 2 - 5, 6, 4);
-            ctx.fillRect(this.w / 2 - 6, this.h / 2 - 5, 6, 4);
+            this._drawProcedural(ctx);
         }
 
-        // Brake lights when NPC stopped
+        // Brake lights when NPC stopped — rear is at -y for sports, +y for all others
         if (this.ai.stopped && !this.driver) {
             ctx.fillStyle = 'rgba(255, 0, 0, 0.9)';
-            ctx.fillRect(-this.w / 2, this.h / 2 - 6, 7, 5);
-            ctx.fillRect(this.w / 2 - 7, this.h / 2 - 6, 7, 5);
+            const bly = this.type === 'sports' ? -this.h / 2 : this.h / 2 - 5;
+            ctx.fillRect(-this.w / 2, bly, 7, 5);
+            ctx.fillRect(this.w / 2 - 7, bly, 7, 5);
         }
 
         // Repo target glow
@@ -549,6 +567,126 @@ class Vehicle {
             ctx.fillStyle = this.health > 50 ? '#00cc00' : this.health > 25 ? '#cccc00' : '#cc0000';
             ctx.fillRect(this.x - 20, this.y - this.h / 2 - 12, 40 * (this.health / 100), 4);
         }
+    }
+
+    _colorFilter() {
+        const target = hexToHsl(this.customColor);
+        // Achromatic targets (Onyx, Pearl) — just grayscale + brightness
+        if (target.s < 10) {
+            return `grayscale(1) brightness(${(target.l / 50).toFixed(2)})`;
+        }
+        // Universal colorize: strip original color → sepia (consistent ~38° warm hue base)
+        // → rotate hue to target → scale saturation and brightness to match
+        const hueShift = (target.h - 38).toFixed(0);
+        const satMult  = Math.max(target.s / 25, 0.5).toFixed(2);
+        const brtMult  = (target.l / 50).toFixed(2);
+        return `grayscale(1) sepia(1) hue-rotate(${hueShift}deg) saturate(${satMult}) brightness(${brtMult})`;
+    }
+
+    _drawProcedural(ctx) {
+        const col = this.customColor || this.color;
+        const W = this.w, H = this.h;
+        const hw = W / 2, hh = H / 2;
+
+        // Decompose hex color for shaded variants
+        let r = 120, g = 120, b = 120;
+        if (col && col.startsWith('#') && col.length === 7) {
+            r = parseInt(col.slice(1, 3), 16) || r;
+            g = parseInt(col.slice(3, 5), 16) || g;
+            b = parseInt(col.slice(5, 7), 16) || b;
+        }
+        const shade = f => `rgb(${Math.max(0, Math.round(r * f))},${Math.max(0, Math.round(g * f))},${Math.max(0, Math.round(b * f))})`;
+
+        if (this.type === 'motorcycle') {
+            // Front at -y (top)
+            ctx.fillStyle = '#111';
+            ctx.fillRect(-5, -hh, 10, 9);         // front wheel
+            ctx.fillRect(-5, hh - 9, 10, 9);      // rear wheel
+            ctx.fillStyle = col;
+            ctx.fillRect(-4, -hh + 8, 8, H - 18); // body/tank
+            ctx.fillStyle = '#555';
+            ctx.fillRect(3, -hh + 12, 2, H - 22); // exhaust pipe
+            ctx.fillStyle = '#222';
+            ctx.beginPath(); ctx.ellipse(0, -3, 5, 9, 0, 0, Math.PI * 2); ctx.fill(); // rider
+            ctx.strokeStyle = '#777'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(-6, -hh + 9); ctx.lineTo(6, -hh + 9); ctx.stroke(); // handlebars
+            ctx.fillStyle = '#ffffaa';
+            ctx.fillRect(-2, -hh, 4, 3); // headlight
+            return;
+        }
+
+        // All cars: draw with front at -y (top).
+        // Sports car has front at +y in game space, so flip the y-axis while drawing.
+        const flipped = (this.type === 'sports');
+        ctx.save();
+        if (flipped) ctx.scale(1, -1);
+
+        const isPolice = (this.type === 'police');
+        const hoodH = flipped ? 18 : 13;
+        const trunkH = flipped ? 16 : 13;
+        const roofH = H - hoodH - trunkH;
+
+        // Wheels (slightly outside body bounds)
+        ctx.fillStyle = '#111';
+        ctx.fillRect(-hw - 2, -hh + 4, 5, 9);   // FL
+        ctx.fillRect(hw - 3,  -hh + 4, 5, 9);   // FR
+        ctx.fillRect(-hw - 2, hh - 13, 5, 9);   // RL
+        ctx.fillRect(hw - 3,  hh - 13, 5, 9);   // RR
+
+        // Main body
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.roundRect(-hw + 1, -hh, W - 2, H, 3); ctx.fill();
+
+        // Side edge shading
+        ctx.fillStyle = shade(0.55);
+        ctx.fillRect(-hw + 1, -hh, 3, H);
+        ctx.fillRect(hw - 4,  -hh, 3, H);
+
+        // Hood (front section)
+        ctx.fillStyle = shade(0.88);
+        ctx.fillRect(-hw + 4, -hh, W - 8, hoodH);
+
+        // Trunk (rear section)
+        ctx.fillStyle = shade(0.72);
+        ctx.fillRect(-hw + 4, hh - trunkH, W - 8, trunkH);
+
+        // Cabin / roof (darkest)
+        ctx.fillStyle = shade(0.42);
+        ctx.beginPath(); ctx.roundRect(-hw + 4, -hh + hoodH, W - 8, roofH, 2); ctx.fill();
+
+        // Windshield (front glass)
+        ctx.fillStyle = 'rgba(155, 210, 255, 0.82)';
+        ctx.fillRect(-hw + 5, -hh + hoodH, W - 10, 10);
+
+        // Rear window
+        ctx.fillStyle = 'rgba(125, 185, 255, 0.65)';
+        ctx.fillRect(-hw + 5, hh - trunkH - 9, W - 10, 9);
+
+        // Headlights (front)
+        ctx.fillStyle = '#ffffc8';
+        ctx.fillRect(-hw + 2, -hh + 1, 8, 5);
+        ctx.fillRect(hw - 10,  -hh + 1, 8, 5);
+
+        // Taillights (rear)
+        ctx.fillStyle = '#cc0000';
+        ctx.fillRect(-hw + 2, hh - 6, 7, 5);
+        ctx.fillRect(hw - 9,  hh - 6, 7, 5);
+
+        if (isPolice) {
+            // Light bar across the cabin
+            const barY = -hh + hoodH + 1;
+            ctx.fillStyle = '#08081a';
+            ctx.fillRect(-9, barY, 18, 6);
+            ctx.fillStyle = '#ff2222';
+            ctx.fillRect(-9, barY, 8, 6);
+            ctx.fillStyle = '#2222ff';
+            ctx.fillRect(1,  barY, 8, 6);
+            // White livery stripe on hood
+            ctx.fillStyle = 'rgba(255,255,255,0.35)';
+            ctx.fillRect(-hw + 4, -hh, W - 8, 3);
+        }
+
+        ctx.restore();
     }
 
     getBounds() {
