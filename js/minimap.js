@@ -113,6 +113,45 @@ class Minimap {
             ctx.fillRect(mx - 5, my - 1, 10, 2);
         }
 
+        // Lawyer's office blip — purple L
+        {
+            const mx = offsetX + LAWYER_PX.x * this.scale * mapScale;
+            const my = offsetY + LAWYER_PX.y * this.scale * mapScale;
+            ctx.fillStyle = '#9944ff';
+            ctx.beginPath();
+            ctx.arc(mx, my, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 5px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('L', mx, my);
+        }
+
+        // Heal zone blip — green cross
+        {
+            const mx = offsetX + HEAL_PX.x * this.scale * mapScale;
+            const my = offsetY + HEAL_PX.y * this.scale * mapScale;
+            ctx.fillStyle = '#00ee66';
+            ctx.fillRect(mx - 1, my - 4, 2, 8);
+            ctx.fillRect(mx - 4, my - 1, 8, 2);
+        }
+
+        // Bank blip — gold $
+        {
+            const mx = offsetX + BANK_PX.x * this.scale * mapScale;
+            const my = offsetY + BANK_PX.y * this.scale * mapScale;
+            ctx.fillStyle = '#cc9900';
+            ctx.beginPath();
+            ctx.arc(mx, my, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 5px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('$', mx, my);
+        }
+
         // Police station blip
         {
             const mx = offsetX + STATION_PX.x * this.scale * mapScale;

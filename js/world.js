@@ -30,6 +30,9 @@ const HOSPITAL_PX = { x: 42 * TILE, y: 40 * TILE };
 const STATION_PX  = { x: 30 * TILE, y: 26 * TILE + TILE / 2 };
 const STATION_PARKING_PX = { x: 30 * TILE, y: 34 * TILE + TILE / 2 };
 const PAY_SPRAY_PX = { x: 52 * TILE + TILE / 2, y: 55 * TILE + TILE / 2 };
+const HEAL_PX      = { x: 42 * TILE, y: 43 * TILE + TILE / 2 }; // sidewalk south of hospital
+const LAWYER_PX    = { x: 62 * TILE + TILE / 2, y: 14 * TILE }; // NE — sidewalk east of v=58 road
+const BANK_PX      = { x: 54 * TILE + TILE / 2, y: 30 * TILE + TILE / 2 }; // NE quadrant — south face of bank building
 
 class World {
     constructor() {
@@ -485,7 +488,7 @@ class World {
             for (let x = startX; x < endX; x++) {
                 const tile = this.tiles[y][x];
                 ctx.fillStyle = TILE_COLORS[tile] || '#333';
-                ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+                ctx.fillRect(x * TILE, y * TILE, TILE + 1, TILE + 1);
 
                 // Sidewalk curb detail — subtle line between sidewalk and road
                 if (tile === T.SIDEWALK) {
@@ -514,10 +517,27 @@ class World {
                     }
                 }
 
+                // Beach/west palm tree strip — grass tiles bordering the sand on west and south edges
+                if (tile === T.GRASS && (x + y) % 2 === 0) {
+                    const onWestStrip  = (x === 7 || x === 8) && y < WORLD_H - 7;
+                    const onSouthStrip = (y === WORLD_H - 7 || y === WORLD_H - 8) && x >= 7;
+                    if (onWestStrip || onSouthStrip) {
+                        const cx = x * TILE + TILE / 2;
+                        const cy = y * TILE + TILE / 2;
+                        ctx.fillStyle = '#5c3a10';
+                        ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#228b35';
+                        ctx.beginPath(); ctx.arc(cx, cy, 13, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#2ec44a';
+                        ctx.beginPath(); ctx.arc(cx - 4, cy - 4, 6, 0, Math.PI * 2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(cx + 3, cy - 5, 5, 0, Math.PI * 2); ctx.fill();
+                    }
+                }
+
                 // Water shimmer
                 if (tile === T.WATER) {
                     ctx.fillStyle = `rgba(100,180,255,${0.05 + Math.sin(Date.now() / 1000 + x + y) * 0.03})`;
-                    ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+                    ctx.fillRect(x * TILE, y * TILE, TILE + 1, TILE + 1);
                 }
             }
         }
@@ -594,16 +614,6 @@ class World {
             ctx.fillStyle = b.roofColor;
             ctx.fillRect(b.x + 4, b.y + 4, b.w - 8, 6);
             // Windows
-            if (b.windows) {
-                ctx.fillStyle = 'rgba(200,220,255,0.7)';
-                const wSize = 8;
-                const gap = 14;
-                for (let wy = b.y + 16; wy < b.y + b.h - 10; wy += gap) {
-                    for (let wx = b.x + 8; wx < b.x + b.w - 10; wx += gap) {
-                        ctx.fillRect(wx, wy, wSize, wSize);
-                    }
-                }
-            }
         }
     }
 

@@ -211,6 +211,23 @@ class Game {
             this.vehicles.push(vehicle);
         }
 
+        // Spawn 3 permanent police cars in the station parking lot (player can steal them)
+        {
+            const parkX = 27 * TILE;
+            const parkCY = 28 * TILE + (3 * TILE) / 2; // vertical center of lot
+            for (let i = 0; i < 3; i++) {
+                const policeV = new Vehicle(
+                    parkX + (i * 2 + 0.5) * TILE,
+                    parkCY,
+                    'police',
+                    this.images
+                );
+                policeV.angle = -Math.PI / 2; // facing north toward station
+                policeV.ai.active = false;     // stay parked
+                this.vehicles.push(policeV);
+            }
+        }
+
         // Spawn one playable helicopter
         const heliSpawn = this.world.spawnPoints[Math.floor(Math.random() * this.world.spawnPoints.length)];
         if (heliSpawn) {
@@ -228,6 +245,10 @@ class Game {
         // Missions
         this.missions = new MissionSystem();
 
+        // Traffic lights
+        this.trafficLights = new TrafficLightSystem(this.world.roadPositions);
+        window.trafficLights = this.trafficLights;
+
         // HUD
         this.hud = new HUD();
 
@@ -243,6 +264,11 @@ class Game {
 
         this.sprayOpen = false;
         this.sprayCooldown = 0;
+        this.healCooldown = 0;
+        this.lawyerCooldown = 0;
+        this.bankLastRobbedAt = null; // Date.now() timestamp, null = never robbed
+        this.bankStolen = 0;          // amount taken in last robbery
+        this.bankProxCooldown = 0;    // prevents re-trigger every frame
         this.mapOpen = false;
         this.infoOpen = false;
 
@@ -333,9 +359,15 @@ class Game {
         // Update world mouse position
         Input.updateWorldMouse(this.camera);
 
+        // Bank robbery check (before player update so E key can be consumed first)
+        this.updateBank(dt);
+
         // Update player
         const isShooting = this.player.weapons.fireCooldown > 0;
         this.player.update(dt, this.world, this.vehicles, this.audio, this.particles);
+
+        // Update traffic lights
+        this.trafficLights.update(dt);
 
         // Update vehicles (reverse loop to allow despawning)
         for (let i = this.vehicles.length - 1; i >= 0; i--) {
@@ -536,6 +568,12 @@ class Game {
         // Pay & Spray interaction
         this.updatePaySpray(dt);
 
+        // Hospital heal zone
+        this.updateHeal(dt);
+
+        // Lawyer's office
+        this.updateLawyer(dt);
+
         // AI-driven vehicles stop for pedestrians and signal them to hurry
         for (const v of this.vehicles) {
             if (v.driver || v.type === 'helicopter' || v.isWreck) continue;
@@ -571,11 +609,17 @@ class Game {
         // Draw world tiles
         this.world.draw(ctx, this.camera);
 
+        // Draw traffic light signals
+        this.trafficLights.draw(ctx, this.camera, this.world.ROAD_WIDTH);
+
         // Draw mission markers
         this.missions.drawMarkers(ctx);
 
         // Draw store markers
         this.drawStoreMarkers(ctx);
+
+        // Draw parking lot pavement (under vehicles and player)
+        this._drawParkingLot(ctx);
 
         // Draw ground vehicles
         for (const v of this.vehicles) {
@@ -944,6 +988,7 @@ class Game {
                             this.player.wantedLevel = 0;
                             this.hud.notify(`Repainted ${this.sprayColors[i].name} & repaired — $${cost}  ★ Cleared!`);
                             this.audio.playPickup();
+                            this.sprayOpen = false;
                             this.sprayCooldown = 1.0;
                         } else {
                             this.hud.notify('Not enough money! Need $500');
@@ -955,6 +1000,95 @@ class Game {
             }
         } else {
             this.sprayOpen = false;
+        }
+    }
+
+    updateHeal(dt) {
+        this.healCooldown = Math.max(0, this.healCooldown - dt);
+        if (this.player.inVehicle || !this.player.alive) return;
+        const near = Collision.dist(this.player.x, this.player.y, HEAL_PX.x, HEAL_PX.y) < 55;
+        if (!near || this.healCooldown > 0) return;
+        if (Input.isDown('h')) {
+            Input.keys['h'] = false;
+            if (this.player.health >= 100) {
+                this.hud.notify('Already at full health!');
+            } else if (this.player.money >= 25) {
+                const gained = Math.min(25, 100 - this.player.health);
+                this.player.health = Math.min(100, this.player.health + 25);
+                this.player.money -= 25;
+                this.hud.notify(`+${Math.round(gained)} HP — $25`);
+                this.audio.playPickup();
+            } else {
+                this.hud.notify('Not enough money! Need $25');
+            }
+            this.healCooldown = 0.4;
+        }
+    }
+
+    updateLawyer(dt) {
+        this.lawyerCooldown = Math.max(0, this.lawyerCooldown - dt);
+        if (this.player.inVehicle || !this.player.alive) return;
+        const near = Collision.dist(this.player.x, this.player.y, LAWYER_PX.x, LAWYER_PX.y) < 60;
+        if (!near || this.lawyerCooldown > 0) return;
+        if (Input.isDown('l')) {
+            Input.keys['l'] = false;
+            if (this.player.wantedLevel <= 0) {
+                this.hud.notify('No wanted level to clear.');
+            } else if (this.player.money >= 200) {
+                this.player.money -= 200;
+                this.player.wantedLevel = Math.max(0, this.player.wantedLevel - 1);
+                this.player.wantedDecayTimer = 0;
+                this.hud.notify('Bribed! One ★ dropped — $200');
+                this.audio.playPickup();
+            } else {
+                this.hud.notify('Not enough money! Need $200');
+            }
+            this.lawyerCooldown = 0.5;
+        }
+    }
+
+    updateBank(dt) {
+        this.bankProxCooldown = Math.max(0, this.bankProxCooldown - dt);
+        if (!this.player.alive) return;
+
+        const near = Collision.dist(this.player.x, this.player.y, BANK_PX.x, BANK_PX.y) < 80;
+        if (!near) return;
+
+        const now = Date.now();
+        const cdMs = this.bankLastRobbedAt ? Math.max(0, 3600000 - (now - this.bankLastRobbedAt)) : 0;
+
+        if (cdMs > 0) {
+            // Player returned during cooldown — arrest on foot
+            if (!this.player.inVehicle && this.bankProxCooldown <= 0) {
+                const lost = Math.min(this.player.money, this.bankStolen);
+                this.player.money = Math.max(0, this.player.money - this.bankStolen);
+                this.player.x = STATION_PX.x;
+                this.player.y = STATION_PX.y + 2 * TILE;
+                this.camera.x = this.player.x;
+                this.camera.y = this.player.y;
+                this.player.wantedLevel = 0;
+                this.player.wantedDecayTimer = 0;
+                this.storeOpen = false;
+                this.sprayOpen = false;
+                this.hud.notify(`ARRESTED! $${lost.toLocaleString()} confiscated — released at station`);
+                this.audio.playPickup();
+                this.bankProxCooldown = 4;
+            }
+            return;
+        }
+
+        // Bank is available — trigger robbery on E
+        if (!this.player.inVehicle && this.bankProxCooldown <= 0 && Input.isDown('e')) {
+            Input.keys['e'] = false;
+            const stolen = 5000 + Math.floor(Math.random() * 5001); // $5,000–$10,000
+            this.player.money += stolen;
+            this.player.wantedLevel = 5;
+            this.player.wantedDecayTimer = 0;
+            this.bankLastRobbedAt = Date.now();
+            this.bankStolen = stolen;
+            this.hud.notify(`BANK ROBBED! +$${stolen.toLocaleString()} — 5★ WANTED!`);
+            this.audio.playExplosion();
+            this.bankProxCooldown = 2;
         }
     }
 
@@ -1082,6 +1216,15 @@ class Game {
         ctx.restore();
     }
 
+    _drawParkingLot(ctx) {
+        const parkX = 27 * TILE;
+        const parkY = 28 * TILE;
+        const parkW = 6 * TILE;
+        const parkH = 3 * TILE;
+        ctx.fillStyle = '#4a4a4a';
+        ctx.fillRect(parkX, parkY, parkW, parkH);
+    }
+
     _drawSpecialLocations(ctx) {
         // ---- Hospital ----
         const hx = HOSPITAL_PX.x;
@@ -1126,26 +1269,51 @@ class Game {
         ctx.shadowBlur = 4;
         ctx.fillText('POLICE', sx, sy - 8);
         ctx.textBaseline = 'alphabetic';
+        ctx.restore();
 
-        // Parking lot lines (drawn over the road tiles at y=28..30)
-        const parkX = 27 * TILE;
-        const parkY = 28 * TILE;
-        const parkW = 6 * TILE;
-        const parkH = 3 * TILE;
-        ctx.fillStyle = 'rgba(20, 20, 40, 0.55)';
-        ctx.fillRect(parkX, parkY, parkW, parkH);
-        // 6 parking spaces
-        ctx.strokeStyle = 'rgba(255, 220, 0, 0.85)';
+        // ---- Lawyer's Office (NE) ----
+        const lx = LAWYER_PX.x, ly = LAWYER_PX.y;
+        const lawPulse = Math.sin(Date.now() / 700) * 0.2 + 0.8;
+        ctx.save();
+        ctx.fillStyle = `rgba(100, 50, 200, ${0.25 * lawPulse})`;
+        ctx.fillRect(lx - 40, ly - 40, 80, 80);
+        ctx.strokeStyle = `rgba(160, 100, 255, ${lawPulse})`;
         ctx.lineWidth = 2;
-        for (let i = 0; i < 6; i++) {
-            const px = parkX + i * TILE;
-            ctx.strokeRect(px + 4, parkY + 4, TILE - 8, parkH - 8);
-        }
-        // "PARKING" label
-        ctx.fillStyle = 'rgba(255,220,0,0.7)';
+        ctx.strokeRect(lx - 40, ly - 40, 80, 80);
+        ctx.fillStyle = '#bb88ff';
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 3;
+        ctx.fillText('LAWYER', lx, ly - 8);
+        ctx.fillStyle = '#ddbbff';
+        ctx.font = '10px Arial';
+        ctx.fillText('Drop ★  $200  [L]', lx, ly + 8);
+        ctx.textBaseline = 'alphabetic';
+        ctx.restore();
+
+        // ---- Hospital Heal Zone ----
+        const healX = HEAL_PX.x;
+        const healY = HEAL_PX.y;
+        const healPulse = Math.sin(Date.now() / 500) * 0.2 + 0.8;
+        ctx.save();
+        ctx.fillStyle = `rgba(0, 200, 80, ${0.22 * healPulse})`;
+        ctx.fillRect(healX - 40, healY - 40, 80, 80);
+        ctx.strokeStyle = `rgba(0, 230, 90, ${healPulse})`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(healX - 40, healY - 40, 80, 80);
+        ctx.fillStyle = `rgba(0, 230, 90, ${healPulse})`;
+        ctx.fillRect(healX - 5, healY - 16, 10, 32);
+        ctx.fillRect(healX - 16, healY - 5, 32, 10);
+        ctx.fillStyle = '#00ff88';
         ctx.font = 'bold 10px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('PARKING', sx, parkY + parkH / 2 + 4);
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 3;
+        ctx.fillText('+25 HP  $25  [H]', healX, healY + 30);
+        ctx.textBaseline = 'alphabetic';
         ctx.restore();
 
         // ---- Pay & Spray ----
@@ -1170,6 +1338,61 @@ class Game {
         ctx.fillText('Drive in with a car', px, py + 8);
         ctx.textBaseline = 'alphabetic';
         ctx.restore();
+
+        // ---- First National Bank ----
+        {
+            const bx = BANK_PX.x, by = BANK_PX.y;
+            const now = Date.now();
+            const cdMs = this.bankLastRobbedAt ? Math.max(0, 3600000 - (now - this.bankLastRobbedAt)) : 0;
+            const bkPulse = Math.sin(Date.now() / 500) * 0.15 + 0.85;
+            const isNear = Collision.dist(this.player.x, this.player.y, bx, by) < 80;
+
+            ctx.save();
+            // Building sign backdrop
+            ctx.fillStyle = cdMs > 0 ? `rgba(80, 20, 20, ${0.4 * bkPulse})` : `rgba(120, 90, 0, ${0.35 * bkPulse})`;
+            ctx.fillRect(bx - 52, by - 44, 104, 52);
+            ctx.strokeStyle = cdMs > 0 ? `rgba(220, 60, 60, ${bkPulse})` : `rgba(220, 170, 0, ${bkPulse})`;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(bx - 52, by - 44, 104, 52);
+
+            // Name
+            ctx.fillStyle = cdMs > 0 ? '#ff6666' : '#ffd700';
+            ctx.font = 'bold 11px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = '#000';
+            ctx.shadowBlur = 4;
+            ctx.fillText('FIRST NATIONAL BANK', bx, by - 30);
+
+            // Status line
+            if (cdMs > 0) {
+                const mins = Math.floor(cdMs / 60000);
+                const secs = Math.floor((cdMs % 60000) / 1000);
+                ctx.fillStyle = '#ff4444';
+                ctx.font = '9px Arial';
+                ctx.fillText(`SECURE — ${mins}m ${secs}s`, bx, by - 16);
+            } else {
+                ctx.fillStyle = '#00ffcc';
+                ctx.font = '9px Arial';
+                ctx.fillText('$5K–$10K INSIDE', bx, by - 16);
+            }
+
+            // Proximity prompt
+            if (isNear) {
+                if (cdMs > 0) {
+                    ctx.fillStyle = '#ff2222';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.fillText('⚠ YOU WILL BE ARRESTED', bx, by - 3);
+                } else {
+                    ctx.fillStyle = '#ffff00';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.fillText('Press [E] to Rob', bx, by - 3);
+                }
+            }
+
+            ctx.textBaseline = 'alphabetic';
+            ctx.restore();
+        }
     }
 
     drawStoreMarkers(ctx) {

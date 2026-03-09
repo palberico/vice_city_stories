@@ -2,90 +2,199 @@
 // MISSION SYSTEM
 // ============================================
 const MISSION_DATA = [
+    // ── TIER 1: Available from the start (5 missions, spread across the map) ──
     {
         id: 'first_ride',
         name: 'First Ride',
-        description: 'Steal a car and drive it to the safehouse.',
+        description: 'Steal a car and drive it to the NW safehouse.',
         reward: 500,
+        startTile: { x: 12, y: 10 },   // NW
+        available: true,
         steps: [
-            { type: 'enter_vehicle', text: 'Find and enter a vehicle', radius: 0 },
-            { type: 'drive_to', text: 'Drive to the safehouse', targetTile: { x: 34, y: 20 }, radius: 100 }
+            { type: 'enter_vehicle', text: 'Find and steal a vehicle' },
+            { type: 'drive_to', text: 'Drive to the NW safehouse', targetTile: { x: 22, y: 20 }, radius: 100 }
         ]
     },
     {
         id: 'the_pickup',
         name: 'The Pickup',
-        description: 'Collect a package from the docks and deliver it.',
+        description: 'Collect a package from the NE docks and deliver it downtown.',
         reward: 1000,
+        startTile: { x: 60, y: 10 },   // NE
+        available: true,
         steps: [
-            { type: 'go_to', text: 'Go to the pickup point', targetTile: { x: 10, y: 28 }, radius: 80 },
-            { type: 'go_to', text: 'Deliver the package', targetTile: { x: 46, y: 20 }, radius: 80 }
+            { type: 'go_to', text: 'Go to the NE pickup point', targetTile: { x: 72, y: 10 }, radius: 80 },
+            { type: 'go_to', text: 'Deliver the package downtown', targetTile: { x: 46, y: 22 }, radius: 80 }
         ]
     },
     {
         id: 'repo_job',
         name: 'Repo Job',
-        description: 'Steal the marked sports car and bring it to the garage.',
+        description: 'Steal the marked sports car in the SE and bring it to the garage.',
         reward: 1500,
+        startTile: { x: 60, y: 58 },   // SE
+        available: true,
         steps: [
-            { type: 'go_to', text: 'Go to the target vehicle', targetTile: { x: 46, y: 38 }, radius: 120 },
-            { type: 'enter_repo_vehicle', text: 'Steal the marked car', radius: 0 },
-            { type: 'drive_to', text: 'Deliver it to the garage', targetTile: { x: 22, y: 32 }, radius: 100 }
+            { type: 'go_to', text: 'Find the repo car in the SE', targetTile: { x: 72, y: 58 }, radius: 120 },
+            { type: 'enter_repo_vehicle', text: 'Steal the marked car' },
+            { type: 'drive_to', text: 'Deliver to the garage', targetTile: { x: 46, y: 44 }, radius: 100 }
         ]
     },
     {
         id: 'street_race',
         name: 'Street Race',
-        description: 'Race through the city checkpoints!',
+        description: 'Race through city checkpoints — NW to NE to SE to SW!',
         reward: 2000,
-        timeLimit: 120, // 2-minute time limit starting from first checkpoint
+        timeLimit: 90,
+        startTile: { x: 35, y: 22 },   // Center
+        available: true,
         steps: [
-            { type: 'enter_vehicle', text: 'Get in a fast car', radius: 0 },
-            { type: 'drive_to', text: 'Checkpoint 1', targetTile: { x: 22, y: 20 }, radius: 100 },
-            { type: 'drive_to', text: 'Checkpoint 2', targetTile: { x: 46, y: 32 }, radius: 100 },
-            { type: 'drive_to', text: 'Checkpoint 3', targetTile: { x: 58, y: 20 }, radius: 100 },
-            { type: 'drive_to', text: 'FINISH LINE', targetTile: { x: 34, y: 44 }, radius: 100 }
+            { type: 'enter_vehicle', text: 'Get in a fast car' },
+            { type: 'drive_to', text: 'Checkpoint 1 — NW corner', targetTile: { x: 12, y: 10 }, radius: 100 },
+            { type: 'drive_to', text: 'Checkpoint 2 — NE corner', targetTile: { x: 70, y: 10 }, radius: 100 },
+            { type: 'drive_to', text: 'Checkpoint 3 — SE corner', targetTile: { x: 70, y: 56 }, radius: 100 },
+            { type: 'drive_to', text: 'FINISH LINE — SW', targetTile: { x: 22, y: 56 }, radius: 100 }
         ]
     },
     {
         id: 'the_heist',
         name: 'The Heist',
-        description: 'Rob the store and escape the police!',
-        reward: 5000,
+        description: 'Rob the SW store and escape east!',
+        reward: 3000,
+        startTile: { x: 24, y: 58 },   // SW
+        available: true,
         steps: [
-            { type: 'go_to', text: 'Go to the store', targetTile: { x: 46, y: 32 }, radius: 80 },
-            { type: 'shoot', text: 'Rob the store (shoot inside)', targetTile: { x: 46, y: 32 }, radius: 120 },
-            { type: 'enter_vehicle', text: 'Get to a getaway car', radius: 0 },
-            { type: 'drive_to', text: 'Escape to the safehouse', targetTile: { x: 22, y: 56 }, radius: 120 }
+            { type: 'go_to', text: 'Go to the target store', targetTile: { x: 22, y: 68 }, radius: 80 },
+            { type: 'shoot', text: 'Rob the store (shoot inside)', targetTile: { x: 22, y: 68 }, radius: 120 },
+            { type: 'enter_vehicle', text: 'Get to a getaway car' },
+            { type: 'drive_to', text: 'Escape to the SE safehouse', targetTile: { x: 58, y: 56 }, radius: 120 }
+        ]
+    },
+
+    // ── TIER 2: Unlocked one at a time as missions are completed ──
+    {
+        id: 'hot_pursuit',
+        name: 'Hot Pursuit',
+        description: 'Chase a speeding criminal through the NE corridor.',
+        reward: 2500,
+        startTile: { x: 72, y: 10 },   // NE far corner
+        available: false,
+        steps: [
+            { type: 'enter_vehicle', text: 'Get in a vehicle — fast!' },
+            { type: 'drive_to', text: 'Intercept at Checkpoint 1', targetTile: { x: 58, y: 22 }, radius: 100 },
+            { type: 'drive_to', text: 'Cut them off at Checkpoint 2', targetTile: { x: 70, y: 44 }, radius: 100 },
+            { type: 'drive_to', text: 'Corner them in the SE', targetTile: { x: 58, y: 58 }, radius: 100 }
+        ]
+    },
+    {
+        id: 'smuggler_run',
+        name: 'Smuggler Run',
+        description: 'Pick up contraband at the SW docks and run it north.',
+        reward: 2000,
+        startTile: { x: 12, y: 58 },   // SW waterfront
+        available: false,
+        steps: [
+            { type: 'go_to', text: 'Go to the SW docks', targetTile: { x: 10, y: 70 }, radius: 80 },
+            { type: 'go_to', text: 'Collect the second crate', targetTile: { x: 34, y: 68 }, radius: 80 },
+            { type: 'enter_vehicle', text: 'Get to a vehicle' },
+            { type: 'drive_to', text: 'Deliver to the NW warehouse', targetTile: { x: 22, y: 20 }, radius: 100 }
+        ]
+    },
+    {
+        id: 'downtown_express',
+        name: 'Downtown Express',
+        description: 'Rush a VIP package across the city — 60 seconds!',
+        reward: 2500,
+        timeLimit: 60,
+        startTile: { x: 47, y: 22 },   // NE mid
+        available: false,
+        steps: [
+            { type: 'enter_vehicle', text: 'Get in a vehicle' },
+            { type: 'drive_to', text: 'Pick up the VIP package', targetTile: { x: 58, y: 32 }, radius: 80 },
+            { type: 'drive_to', text: 'Deliver to the NW drop point', targetTile: { x: 12, y: 20 }, radius: 100 }
+        ]
+    },
+    {
+        id: 'gang_hit',
+        name: 'Gang Hit',
+        description: 'Disrupt a gang meeting in the SE and escape south.',
+        reward: 3500,
+        startTile: { x: 47, y: 58 },   // SE mid
+        available: false,
+        steps: [
+            { type: 'go_to', text: 'Go to the gang location', targetTile: { x: 58, y: 68 }, radius: 80 },
+            { type: 'shoot', text: 'Open fire on the gang', targetTile: { x: 58, y: 68 }, radius: 120 },
+            { type: 'enter_vehicle', text: 'Get to a getaway vehicle' },
+            { type: 'drive_to', text: 'Escape to the SW', targetTile: { x: 34, y: 68 }, radius: 100 }
+        ]
+    },
+    {
+        id: 'neon_circuit',
+        name: 'Neon Circuit',
+        description: 'A full lap of Vice City — all four corners, 2 minutes!',
+        reward: 4000,
+        timeLimit: 120,
+        startTile: { x: 72, y: 46 },   // SE far
+        available: false,
+        steps: [
+            { type: 'enter_vehicle', text: 'Get in a fast car' },
+            { type: 'drive_to', text: 'Checkpoint 1 — NE', targetTile: { x: 70, y: 10 }, radius: 100 },
+            { type: 'drive_to', text: 'Checkpoint 2 — NW', targetTile: { x: 10, y: 10 }, radius: 100 },
+            { type: 'drive_to', text: 'Checkpoint 3 — SW', targetTile: { x: 10, y: 68 }, radius: 100 },
+            { type: 'drive_to', text: 'FINISH — SE', targetTile: { x: 58, y: 56 }, radius: 120 }
+        ]
+    },
+    {
+        id: 'vice_run',
+        name: 'Vice Run',
+        description: 'Transport a shipment from the NW to the SE port.',
+        reward: 3000,
+        startTile: { x: 12, y: 22 },   // NW mid
+        available: false,
+        steps: [
+            { type: 'enter_vehicle', text: 'Get a vehicle for the run' },
+            { type: 'drive_to', text: 'First drop — city center', targetTile: { x: 34, y: 32 }, radius: 100 },
+            { type: 'drive_to', text: 'Final drop — SE port', targetTile: { x: 70, y: 68 }, radius: 100 }
+        ]
+    },
+    {
+        id: 'the_armored_job',
+        name: 'The Armored Job',
+        description: 'Ambush an armored truck and deliver the loot to the SW.',
+        reward: 5000,
+        startTile: { x: 24, y: 34 },   // Center-W
+        available: false,
+        steps: [
+            { type: 'go_to', text: 'Go to the ambush point', targetTile: { x: 34, y: 44 }, radius: 80 },
+            { type: 'shoot', text: 'Take out the guards', targetTile: { x: 34, y: 44 }, radius: 120 },
+            { type: 'enter_vehicle', text: 'Get in a vehicle' },
+            { type: 'drive_to', text: 'Escape west', targetTile: { x: 12, y: 44 }, radius: 100 },
+            { type: 'drive_to', text: 'Deliver to the SW warehouse', targetTile: { x: 12, y: 68 }, radius: 100 }
         ]
     }
 ];
 
 class MissionSystem {
     constructor() {
-        this.missions = MISSION_DATA.map(m => ({ ...m, completed: false, available: true }));
+        this.missions = MISSION_DATA.map(m => ({ ...m, completed: false }));
         this.activeMission = null;
         this.currentStep = 0;
         this.missionMarkers = [];
         this.missionMessage = '';
         this.messageTimer = 0;
         this.repoVehicle = null;
-        this.missionTimer = 0;    // countdown for timed missions
-        this.timerActive = false; // timer only starts after first checkpoint in race
+        this.missionTimer = 0;
+        this.timerActive = false;
         this.setupMarkers();
     }
 
     setupMarkers() {
         this.missionMarkers = [];
-        const startPositions = [
-            { x: 12, y: 10 }, { x: 22, y: 20 }, { x: 32, y: 10 },
-            { x: 42, y: 20 }, { x: 52, y: 10 }
-        ];
         for (let i = 0; i < this.missions.length; i++) {
-            if (!this.missions[i].completed && this.missions[i].available) {
-                const pos = startPositions[i];
+            const m = this.missions[i];
+            if (!m.completed && m.available) {
                 this.missionMarkers.push({
-                    x: pos.x * TILE, y: pos.y * TILE,
+                    x: m.startTile.x * TILE, y: m.startTile.y * TILE,
                     missionIndex: i, radius: 50
                 });
             }
@@ -93,8 +202,10 @@ class MissionSystem {
     }
 
     spawnRepoVehicle(vehicles, images) {
-        const tx = 46 * TILE;
-        const ty = 38 * TILE;
+        const mission = this.missions.find(m => m.id === 'repo_job');
+        const step0 = mission && mission.steps[0];
+        const tx = step0 ? step0.targetTile.x * TILE : 72 * TILE;
+        const ty = step0 ? step0.targetTile.y * TILE : 58 * TILE;
         const repoCar = new Vehicle(tx, ty, 'sports', images);
         repoCar.isRepoTarget = true;
         repoCar.ai.active = false;
@@ -115,7 +226,6 @@ class MissionSystem {
         this.messageTimer = Math.max(0, this.messageTimer - dt);
 
         if (!this.activeMission) {
-            // Check if player is near a mission marker
             for (const marker of this.missionMarkers) {
                 if (Collision.dist(player.x, player.y, marker.x, marker.y) < marker.radius) {
                     this.startMission(marker.missionIndex, audio, vehicles, images);
@@ -125,19 +235,17 @@ class MissionSystem {
             return;
         }
 
-        // ---- Failure conditions ----
-        // All missions: player dies
+        // ── Failure conditions ──
         if (!player.alive) {
             this.failMission('You were wasted!', audio, vehicles);
             return;
         }
-        // Repo job: repo car destroyed
         if (this.activeMission.id === 'repo_job' && this.repoVehicle && this.repoVehicle.health <= 0) {
             this.failMission('The car was destroyed!', audio, vehicles);
             return;
         }
-        // Street race: countdown timer (starts after step 0 — getting in car)
-        if (this.activeMission.id === 'street_race' && this.timerActive) {
+        // Countdown timer — starts after the player completes step 0 (enter_vehicle) on timed missions
+        if (this.activeMission.timeLimit && this.timerActive) {
             this.missionTimer -= dt;
             if (this.missionTimer <= 0) {
                 this.failMission('Time ran out!', audio, vehicles);
@@ -145,7 +253,7 @@ class MissionSystem {
             }
         }
 
-        // ---- Step progression ----
+        // ── Step progression ──
         const step = this.activeMission.steps[this.currentStep];
         if (!step) {
             this.completeMission(player, audio, vehicles);
@@ -156,8 +264,7 @@ class MissionSystem {
         switch (step.type) {
             case 'go_to':
                 if (step.targetTile) {
-                    const tx = step.targetTile.x * TILE;
-                    const ty = step.targetTile.y * TILE;
+                    const tx = step.targetTile.x * TILE, ty = step.targetTile.y * TILE;
                     if (Collision.dist(player.x, player.y, tx, ty) < step.radius) completed = true;
                 }
                 break;
@@ -169,15 +276,13 @@ class MissionSystem {
                 break;
             case 'drive_to':
                 if (player.inVehicle && step.targetTile) {
-                    const tx = step.targetTile.x * TILE;
-                    const ty = step.targetTile.y * TILE;
+                    const tx = step.targetTile.x * TILE, ty = step.targetTile.y * TILE;
                     if (Collision.dist(player.x, player.y, tx, ty) < step.radius) completed = true;
                 }
                 break;
             case 'shoot':
                 if (step.targetTile) {
-                    const tx = step.targetTile.x * TILE;
-                    const ty = step.targetTile.y * TILE;
+                    const tx = step.targetTile.x * TILE, ty = step.targetTile.y * TILE;
                     if (Collision.dist(player.x, player.y, tx, ty) < step.radius && player.weapons.fireCooldown > 0) {
                         completed = true;
                         player.addWanted(3, audio);
@@ -188,8 +293,8 @@ class MissionSystem {
 
         if (completed) {
             this.currentStep++;
-            // Start race timer after the player gets in a car (step 0 → step 1)
-            if (this.activeMission.id === 'street_race' && this.currentStep === 1) {
+            // Start countdown timer after entering a vehicle (step 0 → 1) on timed missions
+            if (this.activeMission.timeLimit && this.currentStep === 1 && !this.timerActive) {
                 this.timerActive = true;
                 this.missionTimer = this.activeMission.timeLimit;
             }
@@ -209,7 +314,6 @@ class MissionSystem {
         this.timerActive = false;
         this.showMessage(`MISSION: ${this.activeMission.name} — ${this.activeMission.description}`);
         audio.playPickup();
-
         if (this.activeMission.id === 'repo_job') {
             this.spawnRepoVehicle(vehicles, images);
         }
@@ -219,14 +323,17 @@ class MissionSystem {
         player.money += this.activeMission.reward;
         this.showMessage(`MISSION COMPLETE: ${this.activeMission.name}! +$${this.activeMission.reward}`);
 
-        if (this.activeMission.id === 'repo_job') {
-            this.removeRepoVehicle(vehicles);
-        }
+        if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
 
         this.activeMission.completed = true;
         this.activeMission = null;
         this.currentStep = 0;
         this.timerActive = false;
+
+        // Unlock the next locked mission from the pool
+        const next = this.missions.find(m => !m.completed && !m.available);
+        if (next) next.available = true;
+
         this.setupMarkers();
         audio.playMissionComplete();
     }
@@ -234,16 +341,11 @@ class MissionSystem {
     failMission(reason, audio, vehicles) {
         const name = this.activeMission.name;
         this.showMessage(`MISSION FAILED: ${name} — ${reason}`);
-
-        if (this.activeMission.id === 'repo_job') {
-            this.removeRepoVehicle(vehicles);
-        }
-
+        if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
         this.activeMission = null;
         this.currentStep = 0;
         this.timerActive = false;
         this.missionTimer = 0;
-        // Re-show markers so player can retry
         this.setupMarkers();
     }
 
@@ -273,7 +375,6 @@ class MissionSystem {
     }
 
     drawMarkers(ctx) {
-        // Mission start markers (yellow circles with M)
         for (const marker of this.missionMarkers) {
             const pulse = Math.sin(Date.now() / 300) * 5;
             ctx.save();
@@ -293,7 +394,7 @@ class MissionSystem {
             ctx.restore();
         }
 
-        // Active mission target marker (orange circle)
+        // Active mission target
         const target = this.getTargetPosition();
         if (target) {
             const pulse = Math.sin(Date.now() / 200) * 8;
@@ -310,6 +411,7 @@ class MissionSystem {
             ctx.fillStyle = '#ff6600';
             ctx.font = 'bold 12px Arial';
             ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
             ctx.fillText('★', target.x, target.y);
             ctx.restore();
         }
@@ -330,6 +432,7 @@ class MissionSystem {
             ctx.fillStyle = '#ff8800';
             ctx.font = 'bold 10px Arial';
             ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
             ctx.fillText('REPO', this.repoVehicle.x, this.repoVehicle.y - this.repoVehicle.h / 2 - 15);
             ctx.restore();
         }

@@ -82,6 +82,7 @@ class MenuSystem {
             'SHIFT — Sprint                      SPACE — Handbrake',
             'F — Rob NPC                         R — Change Radio',
             'TAB — Phone (Missions)              M — Full Map',
+            'H — Buy HP at Hospital ($25)        L — Lawyer: Drop ★ ($200)',
             'I — Controls Info                   ESC — Pause',
         ];
         controls.forEach((c, i) => {

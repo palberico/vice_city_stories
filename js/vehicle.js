@@ -58,6 +58,7 @@ class Vehicle {
         this.idleTimer = 0; // Tracks consecutive seconds of being stopped
         this.isWreck = false; // true once destroyed and left as a burnt-out shell
         this.customColor = null;
+        this.liftScale = 0; // 0 = grounded, 1 = fully airborne (helicopter only)
 
         // NPC AI driving
         this.ai = {
@@ -107,6 +108,13 @@ class Vehicle {
         } else if (!this.driver) {
             this.speed *= (1 - 3 * dt);
             if (Math.abs(this.speed) < 1) this.speed = 0;
+        }
+
+        // Helicopter altitude animation — smoothly lift off when driver enters, land when they exit
+        if (this.type === 'helicopter') {
+            const targetLift = this.driver ? 1.0 : 0.0;
+            const liftSpeed = 1.2; // full transition in ~0.8 seconds
+            this.liftScale += (targetLift - this.liftScale) * Math.min(1, liftSpeed * dt);
         }
 
         // Apply movement
@@ -274,6 +282,49 @@ class Vehicle {
                     if (Math.abs(diff) < Math.PI / 4) {
                         obstacle = true;
                         break;
+                    }
+                }
+            }
+        }
+
+        // Red light check — stop before red/yellow lights (police patrol cars ignore signals)
+        if (window.trafficLights && !this.isPolicePatrol && !obstacle && roadInfo && roadInfo.type !== 'intersection') {
+            const na = ((this.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+            const d = (na < Math.PI / 4 || na > Math.PI * 7 / 4) ? 'right'
+                    : na < Math.PI * 3 / 4 ? 'down'
+                    : na < Math.PI * 5 / 4 ? 'left' : 'up';
+            const BD = TILE * 2; // braking distance: 2 tiles before stop line
+
+            if (roadInfo.type === 'v') {
+                for (const hy of world.roadPositions.h) {
+                    if (d === 'up') {
+                        const stopY = (hy + world.ROAD_WIDTH) * TILE;
+                        if (this.y > stopY && this.y - stopY < BD) {
+                            if (window.trafficLights.getState(roadInfo.roadStart, hy, 'ns') !== 'green') obstacle = true;
+                            break;
+                        }
+                    } else if (d === 'down') {
+                        const stopY = hy * TILE;
+                        if (this.y < stopY && stopY - this.y < BD) {
+                            if (window.trafficLights.getState(roadInfo.roadStart, hy, 'ns') !== 'green') obstacle = true;
+                            break;
+                        }
+                    }
+                }
+            } else if (roadInfo.type === 'h') {
+                for (const vx of world.roadPositions.v) {
+                    if (d === 'right') {
+                        const stopX = vx * TILE;
+                        if (this.x < stopX && stopX - this.x < BD) {
+                            if (window.trafficLights.getState(vx, roadInfo.roadStart, 'ew') !== 'green') obstacle = true;
+                            break;
+                        }
+                    } else if (d === 'left') {
+                        const stopX = (vx + world.ROAD_WIDTH) * TILE;
+                        if (this.x > stopX && this.x - stopX < BD) {
+                            if (window.trafficLights.getState(vx, roadInfo.roadStart, 'ew') !== 'green') obstacle = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -478,14 +529,21 @@ class Vehicle {
         ctx.rotate(this.angle + this.spriteRot);
 
         if (this.type === 'helicopter') {
-            // Shadow
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            const lift = this.liftScale;
+            const bodyScale = 1.0 + lift * 0.38;
+
+            // Shadow — offset and size grow with altitude, giving the illusion of height
+            const shadowOffX = 6 + lift * 22;
+            const shadowOffY = 6 + lift * 22;
+            ctx.fillStyle = `rgba(0, 0, 0, ${0.28 - lift * 0.1})`;
             ctx.beginPath();
-            ctx.ellipse(5, 5, 25, 12, 0, 0, Math.PI * 2);
+            ctx.ellipse(shadowOffX, shadowOffY, 25 + lift * 14, 12 + lift * 6, 0, 0, Math.PI * 2);
             ctx.fill();
 
-            // Fuselage setup
-            // Angle 0 faces right.
+            // Scale the entire helicopter body up as it lifts off
+            ctx.save();
+            ctx.scale(bodyScale, bodyScale);
+
             // Main body
             ctx.fillStyle = this.customColor || this.color;
             ctx.beginPath();
@@ -524,12 +582,14 @@ class Vehicle {
             ctx.moveTo(0, -35);
             ctx.lineTo(0, 35);
             ctx.stroke();
-            // Rotor blur
+            // Rotor blur disc
             ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
             ctx.beginPath();
             ctx.arc(0, 0, 35, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
+
+            ctx.restore(); // end body scale
 
         } else if (this.img && this.img.complete) {
             if (this.customColor) ctx.filter = this._colorFilter();
