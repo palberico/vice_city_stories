@@ -82,6 +82,8 @@ class Game {
             'hospital', 'police_building', 'bank',
             'sidewalk/corner',
             'sidewalk/sidewalk_plain',
+            'roads/parking/police_parking',
+            'roads/asphalt_blank',
             'npc_business_man_front', 'npc_business_man_back',
             'npc_business_man_front_walk', 'npc_business_man_back_walk',
             'npc_beach_tourist_front', 'npc_beach_tourist_back',
@@ -112,9 +114,10 @@ class Game {
             'car_sedan_blue':   'assets/vehicles/ground/car_sedan_blue.png',
             'car_sedan_green':  'assets/vehicles/ground/car_sedan_green.png',
             'car_sedan_white':  'assets/vehicles/ground/car_sedan_white.png',
-            'hospital':          'assets/buildings/hospital.png',
-            'police_building':   'assets/buildings/police.png',
-            'bank':              'assets/buildings/bank.png',
+            'hospital':                    'assets/buildings/hospital.png',
+            'police_building':             'assets/buildings/police.png',
+            'bank':                        'assets/buildings/bank.png',
+            'roads/parking/police_parking': 'assets/roads/parking/police_parking.png',
         };
 
         const promises = assetList.map(name => {
@@ -132,7 +135,8 @@ class Game {
                     if (loadingBar) loadingBar.style.width = `${(loaded / assetList.length) * 100}%`;
                     resolve();
                 };
-                img.src = customPaths[name] || `assets/${name}.png`;
+                const ASSET_V = 68;
+                img.src = (customPaths[name] || `assets/${name}.png`) + `?v=${ASSET_V}`;
             });
         });
         await Promise.all(promises);
@@ -268,12 +272,14 @@ class Game {
         }
 
 
-        // Two police cars parked on the south side of the station, protruding onto the sidewalk
+        // Two static police cars parked at tiles (29,29) and (30,29)
         {
-            const stationSouthY = 31 * TILE; // south edge of 6-tile-tall building
-            const carPositions = [29.25 * TILE, 30.75 * TILE];
-            for (const cx of carPositions) {
-                const policeV = new Vehicle(cx, stationSouthY, 'police', this.images);
+            const staticSpots = [
+                { tx: 29, ty: 29 },
+                { tx: 30, ty: 29 },
+            ];
+            for (const { tx, ty } of staticSpots) {
+                const policeV = new Vehicle(tx * TILE + TILE / 2, ty * TILE, 'police', this.images);
                 policeV.angle = Math.PI / 2; // facing south
                 policeV.ai.active = false;
                 policeV.isStationParked = true;

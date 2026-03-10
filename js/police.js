@@ -233,14 +233,20 @@ class PoliceSystem {
         }
     }
 
-    // ---- Spawn one patrol car from the station ----
+    // ---- Spawn one patrol car into the first unoccupied parking spot ----
     _spawnPatrolUnit(vehicles, images) {
-        // Spawn on the h=32 road near the station parking lot, staggered by slot
-        const slot = this.patrolUnits.length;
-        const spawnX = STATION_PARKING_PX.x + (slot - 2) * TILE * 1.2;
-        const spawnY = STATION_PARKING_PX.y;
+        // Find first designated spot with no vehicle already on it
+        const spot = STATION_PATROL_SPOTS.find(s => {
+            const cx = s.tx * TILE + TILE / 2;
+            const cy = s.ty * TILE;
+            return !vehicles.some(v => Math.abs(v.x - cx) < TILE * 0.6 && Math.abs(v.y - cy) < TILE * 0.6);
+        });
+        if (!spot) return; // all spots occupied
+
+        const spawnX = spot.tx * TILE + TILE / 2;
+        const spawnY = spot.ty * TILE;
         const vehicle = new Vehicle(spawnX, spawnY, 'police', images);
-        vehicle.angle = 0; // driving right along horizontal road
+        vehicle.angle = Math.PI / 2; // facing south
         vehicle.isPolicePatrol = true;
         vehicle.ai.active = true;
         vehicle.ai.targetSpeed = 60 + Math.random() * 40;

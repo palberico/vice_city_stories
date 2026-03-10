@@ -26,11 +26,16 @@ const TILE_COLORS = {
 };
 
 // Special fixed locations — placed inside city blocks between road grid lines
-const HOSPITAL_PX = { x: 42 * TILE, y: 40 * TILE };
-const STATION_PX  = { x: 30 * TILE, y: 26 * TILE + TILE / 2 };
-const STATION_PARKING_PX = { x: 30 * TILE, y: 34 * TILE + TILE / 2 };
+const HOSPITAL_PX = { x: 45 * TILE + TILE / 2, y: 46 * TILE + TILE / 2 }; // center of 5x5 hospital (HBX+2.5, HBY+2.5)
+const STATION_PX  = { x: 34 * TILE + TILE / 2, y: 32 * TILE + TILE / 2 }; // center of 5x5 police station
+const STATION_PARKING_PX = { x: 34 * TILE + TILE / 2, y: 35 * TILE + TILE / 2 }; // one tile south of station
+// Designated patrol car spawn spots — one car per tile, checked before spawning
+const STATION_PATROL_SPOTS = [
+    { tx: 29, ty: 31 }, { tx: 30, ty: 31 }, { tx: 31, ty: 31 },
+    { tx: 29, ty: 33 }, { tx: 30, ty: 33 }, { tx: 31, ty: 33 },
+];
 const PAY_SPRAY_PX = { x: 52 * TILE + TILE / 2, y: 55 * TILE + TILE / 2 };
-const HEAL_PX      = { x: 42 * TILE, y: 43 * TILE + TILE / 2 }; // sidewalk south of hospital
+const HEAL_PX      = { x: 45 * TILE + TILE / 2, y: 49 * TILE + TILE / 2 }; // one tile south of hospital
 const LAWYER_PX    = { x: 62 * TILE + TILE / 2, y: 14 * TILE }; // NE — sidewalk east of v=58 road
 const BANK_PX      = { x: 54 * TILE + TILE / 2, y: 30 * TILE + TILE / 2 }; // NE quadrant — south face of bank building
 
@@ -61,10 +66,10 @@ class World {
             if (this.tiles[y][6] === T.GRASS) this.tiles[y][6] = T.SAND;
         }
 
-        // Road grid — 4-tile wide roads, spaced every 12 tiles
-        // This creates wider roads and reasonably-sized city blocks
+        // Road grid — 4-tile wide roads, spaced every 14 tiles
+        // This creates wider roads and reasonably-sized city blocks (10-tile blocks)
         const ROAD_WIDTH = 4;
-        const ROAD_SPACING = 12;
+        const ROAD_SPACING = 14;
         const roadPositions = { h: [], v: [] };
 
         // Store on instance for vehicle AI lane system
@@ -226,12 +231,14 @@ class World {
         }
 
         // Buildings — fill city blocks tightly, right against sidewalks
+        // TEMP: random building spawns disabled for layout work
         const buildingColors = [
             '#8899aa', '#7788aa', '#667799', '#998877', '#aa8866',
             '#887799', '#6688aa', '#556677', '#889988', '#aa7766',
             '#cc8855', '#5577aa', '#7a8899', '#996644', '#668877'
         ];
 
+        /* TEMP: random building spawns disabled for layout work
         for (let vi = 0; vi < roadPositions.v.length; vi++) {
             for (let hi = 0; hi < roadPositions.h.length; hi++) {
                 const vx = roadPositions.v[vi];
@@ -300,6 +307,7 @@ class World {
                 }
             }
         }
+        */ // END TEMP disabled block
 
         // Parks
         const parkLocations = [[15, 22], [37, 42], [55, 27]];
@@ -315,10 +323,10 @@ class World {
             }
         }
 
-        // ---- Hospital block (map center, between v=34/v=46 and h=32/h=44) ----
+        // ---- Hospital block — SW corner at tile (43,48), 5x5 ----
         // Clear random buildings and place a single white hospital building
         {
-            const HBX = 40, HBY = 39, HBW = 4, HBH = 4;
+            const HBX = 43, HBY = 44, HBW = 5, HBH = 5;
             this.buildings = this.buildings.filter(b => {
                 const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
                 const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
@@ -339,11 +347,10 @@ class World {
 
         }
 
-        // ---- Police station block (between v=22/v=34 and h=20/h=32) ----
-        // Full 6x6 block is building
+        // ---- Police station block — SW corner at tile (32,34), 5x5 ----
         {
-            const SBX = 27, SBW = 6;
-            const SBuildY = 25, SBuildH = 6;
+            const SBX = 32, SBW = 5;
+            const SBuildY = 30, SBuildH = 5;
             this.buildings = this.buildings.filter(b => {
                 const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
                 const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
@@ -442,6 +449,29 @@ class World {
 
         // Build sidewalk sprite map for all buildings
         this._buildSidewalkSprites();
+
+        // Tile sprite overlays — walkable tiles with a custom sprite drawn on top
+        this.tileSprites = new Map([
+            ['29,33', 'roads/parking/police_parking'],
+            ['30,33', 'roads/parking/police_parking'],
+            ['31,33', 'roads/parking/police_parking'],
+            ['29,31', 'roads/parking/police_parking'],
+            ['30,31', 'roads/parking/police_parking'],
+            ['31,31', 'roads/parking/police_parking'],
+            ['29,29', 'roads/parking/police_parking'],
+            ['30,29', 'roads/parking/police_parking'],
+            ['31,29', 'roads/parking/police_parking'],
+        ]);
+
+        // Fill rest of police block (x=29-36, y=27-34) with asphalt where not building or parking
+        for (let ty = 27; ty <= 34; ty++) {
+            for (let tx = 29; tx <= 36; tx++) {
+                const key = `${tx},${ty}`;
+                if (this.tiles[ty][tx] !== T.BUILDING && !this.tileSprites.has(key)) {
+                    this.tileSprites.set(key, 'roads/asphalt_blank');
+                }
+            }
+        }
     }
 
     _buildSidewalkSprites() {
@@ -452,25 +482,50 @@ class World {
                 this.sidewalkSprites.set(`${tx},${ty}`, { key, rot: rot || 0 });
             }
         };
+
+        // Scan outward from a starting tile until a sidewalk tile is found.
+        // dx/dy is the step direction (e.g. -1,0 = scan left).
+        const findSW = (startX, startY, dx, dy) => {
+            let tx = startX, ty = startY;
+            while (tx >= 0 && tx < WORLD_W && ty >= 0 && ty < WORLD_H) {
+                if (this.tiles[ty][tx] === T.SIDEWALK) return dx !== 0 ? tx : ty;
+                tx += dx; ty += dy;
+            }
+            return -1; // not found
+        };
+
         for (const b of this.buildings) {
             if (!b.isHospital && !b.isPoliceStation && !b.isBank) continue;
             const bx1 = Math.round(b.x / TILE);
             const by1 = Math.round(b.y / TILE);
             const bx2 = bx1 + Math.round(b.w / TILE) - 1;
             const by2 = by1 + Math.round(b.h / TILE) - 1;
+
+            // Use the midpoint of each edge as the scan reference so we don't
+            // accidentally walk into a corner tile of a different building.
+            const midX = Math.floor((bx1 + bx2) / 2);
+            const midY = Math.floor((by1 + by2) / 2);
+
+            const leftX  = findSW(bx1 - 1, midY,  -1,  0);
+            const rightX = findSW(bx2 + 1, midY,   1,  0);
+            const topY   = findSW(midX,  by1 - 1,  0, -1);
+            const botY   = findSW(midX,  by2 + 1,  0,  1);
+
+            if (leftX < 0 || rightX < 0 || topY < 0 || botY < 0) continue;
+
             // Corners
-            set(bx1 - 1, by1 - 1, 'sidewalk/corner', 0);               // NW
-            set(bx2 + 1, by1 - 1, 'sidewalk/corner', Math.PI / 2);     // NE
-            set(bx2 + 1, by2 + 1, 'sidewalk/corner', Math.PI);         // SE
-            set(bx1 - 1, by2 + 1, 'sidewalk/corner', -Math.PI / 2);   // SW
+            set(leftX,  topY, 'sidewalk/corner', 0);               // NW
+            set(rightX, topY, 'sidewalk/corner', Math.PI / 2);     // NE
+            set(rightX, botY, 'sidewalk/corner', Math.PI);         // SE
+            set(leftX,  botY, 'sidewalk/corner', -Math.PI / 2);    // SW
             // Top edge
-            for (let tx = bx1; tx <= bx2; tx++) set(tx, by1 - 1, 'sidewalk/sidewalk_plain', 0);
+            for (let tx = leftX + 1; tx < rightX; tx++) set(tx, topY, 'sidewalk/sidewalk_plain', 0);
             // Bottom edge
-            for (let tx = bx1; tx <= bx2; tx++) set(tx, by2 + 1, 'sidewalk/sidewalk_plain', Math.PI);
+            for (let tx = leftX + 1; tx < rightX; tx++) set(tx, botY, 'sidewalk/sidewalk_plain', Math.PI);
             // Left edge
-            for (let ty = by1; ty <= by2; ty++) set(bx1 - 1, ty, 'sidewalk/sidewalk_plain', -Math.PI / 2);
+            for (let ty = topY + 1; ty < botY; ty++) set(leftX,  ty, 'sidewalk/sidewalk_plain', -Math.PI / 2);
             // Right edge
-            for (let ty = by1; ty <= by2; ty++) set(bx2 + 1, ty, 'sidewalk/sidewalk_plain', Math.PI / 2);
+            for (let ty = topY + 1; ty < botY; ty++) set(rightX, ty, 'sidewalk/sidewalk_plain', Math.PI / 2);
         }
     }
 
@@ -544,6 +599,17 @@ class World {
                 ctx.fillStyle = TILE_COLORS[tile] || '#333';
                 ctx.fillRect(x * TILE, y * TILE, TILE + 1, TILE + 1);
 
+                // Tile sprite overlays (walkable — drawn on top of base tile color)
+                if (images && this.tileSprites) {
+                    const spriteKey = this.tileSprites.get(`${x},${y}`);
+                    if (spriteKey) {
+                        const img = images[spriteKey];
+                        if (img && img.complete && img.width > 0) {
+                            ctx.drawImage(img, x * TILE, y * TILE, TILE + 1, TILE + 1);
+                        }
+                    }
+                }
+
                 // Sidewalk — sprite override or default curb detail
                 if (tile === T.SIDEWALK) {
                     const override = images && this.sidewalkSprites &&
@@ -554,7 +620,7 @@ class World {
                             ctx.save();
                             ctx.translate(x * TILE + TILE / 2, y * TILE + TILE / 2);
                             if (override.rot) ctx.rotate(override.rot);
-                            ctx.drawImage(img, -TILE / 2, -TILE / 2, TILE, TILE);
+                            ctx.drawImage(img, -TILE / 2, -TILE / 2, TILE + 1, TILE + 1);
                             ctx.restore();
                         }
                     } else {
@@ -609,57 +675,22 @@ class World {
             }
         }
 
-        // Stop lines at intersections — one per approach, spanning 2 lanes only
-        const RW = this.ROAD_WIDTH; // 4
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        for (const vx of this.roadPositions.v) {
-            for (const hy of this.roadPositions.h) {
-                // Check if intersection is in camera view (rough check)
-                const ix = vx * TILE, iy = hy * TILE;
-                const iw = RW * TILE, ih = RW * TILE;
-                if (!camera.isVisible(ix - TILE, iy - TILE, iw + 2 * TILE, ih + 2 * TILE)) continue;
-
-                // Northbound traffic (going UP) — lanes 3-4 (columns vx+2, vx+3)
-                // Stop line at south approach — ONLY if not the southernmost road
-                if (hy !== this.roadPositions.h[this.roadPositions.h.length - 1]) {
-                    ctx.fillRect(
-                        (vx + 2) * TILE,           // starts at lane 3
-                        (hy + RW) * TILE,           // top edge of bottom crosswalk row
-                        2 * TILE,                   // spans 2 lanes (lanes 3-4)
-                        3                           // line thickness
-                    );
+        // DEV: tile coordinate grid (always on — remove when done)
+        {
+            const LABEL_EVERY = 2;
+            ctx.strokeStyle = 'rgba(255,255,0,0.3)';
+            ctx.lineWidth = 0.5;
+            ctx.font = '11px monospace';
+            for (let y = startY; y < endY; y++) {
+                for (let x = startX; x < endX; x++) {
+                    ctx.strokeRect(x * TILE, y * TILE, TILE, TILE);
+                    if (x % LABEL_EVERY === 0 && y % LABEL_EVERY === 0) {
+                        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                        ctx.fillRect(x * TILE + 1, y * TILE + 1, 38, 15);
+                        ctx.fillStyle = '#ffff00';
+                        ctx.fillText(`${x},${y}`, x * TILE + 3, y * TILE + 13);
+                    }
                 }
-
-                // Southbound traffic (going DOWN) — lanes 1-2 (columns vx, vx+1)
-                // Stop line at north approach: horizontal line at bottom of top crosswalk row
-                // Extends from upper-left corner inward (2 tiles)
-                ctx.fillRect(
-                    vx * TILE,                  // starts at lane 1
-                    (hy) * TILE - 3,            // bottom edge of top crosswalk row
-                    2 * TILE,                   // spans 2 lanes (lanes 1-2)
-                    3                           // line thickness
-                );
-
-                // Eastbound traffic (going RIGHT) — lanes 3-4 (rows hy+2, hy+3)
-                // Stop line at west approach — ONLY if not the westernmost road
-                if (vx !== this.roadPositions.v[0]) {
-                    ctx.fillRect(
-                        vx * TILE,                  // right edge of left crosswalk column
-                        (hy + 2) * TILE,            // starts at lane 3
-                        3,                          // line thickness
-                        2 * TILE                    // spans 2 lanes (lanes 3-4)
-                    );
-                }
-
-                // Westbound traffic (going LEFT) — lanes 1-2 (rows hy, hy+1)
-                // Stop line at east approach: vertical line at left of right crosswalk column
-                // Extends from upper-right corner inward (2 tiles)
-                ctx.fillRect(
-                    (vx + RW) * TILE - 3,       // left edge of right crosswalk column
-                    hy * TILE,                  // starts at lane 1
-                    3,                          // line thickness
-                    2 * TILE                    // spans 2 lanes (lanes 1-2)
-                );
             }
         }
     }

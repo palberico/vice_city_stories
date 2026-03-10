@@ -638,7 +638,7 @@ class Vehicle {
 
         } else if (this.img && this.img.complete) {
             if (this.customColor && this.type !== 'sports' && this.type !== 'sedan') ctx.filter = this._colorFilter();
-            let scale = Math.max(this.w / this.img.width, this.h / this.img.height) * 1.4;
+            let scale = Math.max(this.w / this.img.width, this.h / this.img.height) * 1.8;
             if (this.type === 'motorcycle') scale *= 0.7;
             ctx.drawImage(this.img, -this.img.width * scale / 2, -this.img.height * scale / 2, this.img.width * scale, this.img.height * scale);
             ctx.filter = 'none';
