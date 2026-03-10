@@ -318,7 +318,7 @@ class World {
         // ---- Hospital block (map center, between v=34/v=46 and h=32/h=44) ----
         // Clear random buildings and place a single white hospital building
         {
-            const HBX = 39, HBY = 37, HBW = 6, HBH = 6;
+            const HBX = 40, HBY = 39, HBW = 4, HBH = 4;
             this.buildings = this.buildings.filter(b => {
                 const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
                 const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
