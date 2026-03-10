@@ -246,7 +246,7 @@ class PoliceSystem {
         const spawnX = spot.tx * TILE + TILE / 2;
         const spawnY = spot.ty * TILE;
         const vehicle = new Vehicle(spawnX, spawnY, 'police', images);
-        vehicle.angle = Math.PI / 2; // facing south
+        vehicle.angle = 0; // facing south (sprite drawn at angle + spriteRot; police spriteRot = PI/2, so 0 + PI/2 = south)
         vehicle.isPolicePatrol = true;
         vehicle.ai.active = true;
         vehicle.ai.targetSpeed = 60 + Math.random() * 40;

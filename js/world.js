@@ -31,8 +31,8 @@ const STATION_PX  = { x: 34 * TILE + TILE / 2, y: 32 * TILE + TILE / 2 }; // cen
 const STATION_PARKING_PX = { x: 34 * TILE + TILE / 2, y: 35 * TILE + TILE / 2 }; // one tile south of station
 // Designated patrol car spawn spots — one car per tile, checked before spawning
 const STATION_PATROL_SPOTS = [
-    { tx: 29, ty: 31 }, { tx: 30, ty: 31 }, { tx: 31, ty: 31 },
     { tx: 29, ty: 33 }, { tx: 30, ty: 33 }, { tx: 31, ty: 33 },
+    { tx: 29, ty: 31 }, { tx: 30, ty: 31 }, { tx: 31, ty: 31 },
 ];
 const PAY_SPRAY_PX = { x: 52 * TILE + TILE / 2, y: 55 * TILE + TILE / 2 };
 const HEAL_PX      = { x: 45 * TILE + TILE / 2, y: 49 * TILE + TILE / 2 }; // one tile south of hospital
@@ -461,6 +461,19 @@ class World {
             ['29,29', 'roads/parking/police_parking'],
             ['30,29', 'roads/parking/police_parking'],
             ['31,29', 'roads/parking/police_parking'],
+            ['28,36', 'roads/crosswalk'],
+            ['28,37', 'roads/crosswalk'],
+            ['28,38', 'roads/crosswalk'],
+            ['28,39', 'roads/crosswalk'],
+            ['29,36', { key: 'roads/asphalt_stop_line', rot: Math.PI / 2 }],
+            ['29,37', { key: 'roads/asphalt_stop_line', rot: Math.PI / 2 }],
+            ['30,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
+            ['31,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
+            ['32,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
+            ['33,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
+            ['34,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
+            ['35,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
+            ['36,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
         ]);
 
         // Fill rest of police block (x=29-36, y=27-34) with asphalt where not building or parking
@@ -601,11 +614,21 @@ class World {
 
                 // Tile sprite overlays (walkable — drawn on top of base tile color)
                 if (images && this.tileSprites) {
-                    const spriteKey = this.tileSprites.get(`${x},${y}`);
-                    if (spriteKey) {
+                    const entry = this.tileSprites.get(`${x},${y}`);
+                    if (entry) {
+                        const spriteKey = typeof entry === 'string' ? entry : entry.key;
+                        const rot = typeof entry === 'string' ? 0 : entry.rot;
                         const img = images[spriteKey];
                         if (img && img.complete && img.width > 0) {
-                            ctx.drawImage(img, x * TILE, y * TILE, TILE + 1, TILE + 1);
+                            if (rot) {
+                                ctx.save();
+                                ctx.translate(x * TILE + TILE / 2, y * TILE + TILE / 2);
+                                ctx.rotate(rot);
+                                ctx.drawImage(img, -TILE / 2, -TILE / 2, TILE + 1, TILE + 1);
+                                ctx.restore();
+                            } else {
+                                ctx.drawImage(img, x * TILE, y * TILE, TILE + 1, TILE + 1);
+                            }
                         }
                     }
                 }

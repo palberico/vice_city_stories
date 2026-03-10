@@ -84,6 +84,10 @@ class Game {
             'sidewalk/sidewalk_plain',
             'roads/parking/police_parking',
             'roads/asphalt_blank',
+            'roads/asphalt_line',
+            'roads/asphalt_stop',
+            'roads/asphalt_stop_line',
+            'roads/crosswalk',
             'npc_business_man_front', 'npc_business_man_back',
             'npc_business_man_front_walk', 'npc_business_man_back_walk',
             'npc_beach_tourist_front', 'npc_beach_tourist_back',
@@ -118,6 +122,7 @@ class Game {
             'police_building':             'assets/buildings/police.png',
             'bank':                        'assets/buildings/bank.png',
             'roads/parking/police_parking': 'assets/roads/parking/police_parking.png',
+            'roads/crosswalk':              'assets/roads/crosswalk.png',
         };
 
         const promises = assetList.map(name => {
