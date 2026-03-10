@@ -29,7 +29,8 @@ const VEHICLE_TYPES = {
     sedan: { name: 'Admiral', topSpeed: 262, accel: 200, handling: 2.5, braking: 300, w: 28, h: 52, color: '#eeeecc', img: 'car_sedan', spriteRot: Math.PI / 2 },
     police: { name: 'Police', topSpeed: 349, accel: 260, handling: 2.8, braking: 340, w: 30, h: 55, color: '#222244', img: 'car_police', spriteRot: Math.PI / 2 },
     motorcycle: { name: 'PCJ-600', topSpeed: 480, accel: 320, handling: 4.0, braking: 250, w: 14, h: 30, color: '#333333', img: 'motorcycle', spriteRot: Math.PI / 2 },
-    helicopter: { name: 'Maverick', topSpeed: 349, accel: 150, handling: 1.5, braking: 100, w: 40, h: 40, color: '#990000', img: 'helicopter', spriteRot: 0 }
+    helicopter: { name: 'Maverick', topSpeed: 349, accel: 150, handling: 1.5, braking: 100, w: 40, h: 40, color: '#990000', img: 'helicopter', spriteRot: Math.PI / 2 },
+    armored: { name: 'Securicar', topSpeed: 120, accel: 80, handling: 1.0, braking: 150, w: 32, h: 58, color: '#cccccc', img: 'armored_car', spriteRot: Math.PI / 2 }
 };
 
 class Vehicle {
@@ -76,26 +77,51 @@ class Vehicle {
     update(dt, world, input, isPlayerDriving, player, allVehicles) {
         if (isPlayerDriving && this.driver) {
             // ---- PLAYER DRIVING ----
-            if (input.isDown('w') || input.isDown('arrowup')) {
-                this.speed += this.accel * dt;
-            } else if (input.isDown('s') || input.isDown('arrowdown')) {
-                this.speed -= this.braking * dt;
+            if (this.type === 'helicopter') {
+                // ---- HELICOPTER CONTROLS ----
+                // W/S: thrust forward/backward along facing direction
+                if (input.isDown('w') || input.isDown('arrowup')) {
+                    this.speed += this.accel * dt;
+                } else if (input.isDown('s') || input.isDown('arrowdown')) {
+                    this.speed -= this.braking * 0.6 * dt;
+                } else {
+                    this.speed *= (1 - 2.2 * dt); // stronger air drag — drifts to a stop quickly
+                }
+                this.speed = Math.max(-this.topSpeed * 0.25, Math.min(this.topSpeed, this.speed));
+
+                // A/D: rotate freely at any speed (no minimum speed requirement)
+                const heliTurn = this.handling * 2.5 * dt;
+                if (input.isDown('a') || input.isDown('arrowleft')) this.angle -= heliTurn;
+                if (input.isDown('d') || input.isDown('arrowright')) this.angle += heliTurn;
+                // Keep angle in [0, 2π) to avoid floating-point drift
+                this.angle = ((this.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+
+                // Space: air brake
+                if (input.isDown(' ')) this.speed *= (1 - 8 * dt);
+
             } else {
-                this.speed *= (1 - 1.5 * dt);
-            }
-            this.speed = Math.max(-this.topSpeed * 0.3, Math.min(this.topSpeed, this.speed));
+                // ---- GROUND VEHICLE CONTROLS ----
+                if (input.isDown('w') || input.isDown('arrowup')) {
+                    this.speed += this.accel * dt;
+                } else if (input.isDown('s') || input.isDown('arrowdown')) {
+                    this.speed -= this.braking * dt;
+                } else {
+                    this.speed *= (1 - 1.5 * dt);
+                }
+                this.speed = Math.max(-this.topSpeed * 0.3, Math.min(this.topSpeed, this.speed));
 
-            if (Math.abs(this.speed) > 10) {
-                const steerFactor = this.handling * dt * (this.speed > 0 ? 1 : -1);
-                if (input.isDown('a') || input.isDown('arrowleft')) this.angle -= steerFactor;
-                if (input.isDown('d') || input.isDown('arrowright')) this.angle += steerFactor;
-            }
-            if (input.isDown(' ') && Math.abs(this.speed) > 50) {
-                this.speed *= 0.95;
+                if (Math.abs(this.speed) > 10) {
+                    const steerFactor = this.handling * dt * (this.speed > 0 ? 1 : -1);
+                    if (input.isDown('a') || input.isDown('arrowleft')) this.angle -= steerFactor;
+                    if (input.isDown('d') || input.isDown('arrowright')) this.angle += steerFactor;
+                }
+                if (input.isDown(' ') && Math.abs(this.speed) > 50) {
+                    this.speed *= 0.95;
+                }
             }
 
-            // Vehicle-vehicle collision when player is driving
-            if (allVehicles) {
+            // Vehicle-vehicle collision when player is driving (ground only)
+            if (this.type !== 'helicopter' && allVehicles) {
                 for (const other of allVehicles) {
                     if (other === this) continue;
                     if (this.checkVehicleCollision(other)) {
@@ -139,6 +165,8 @@ class Vehicle {
                 // Spin slowly to a stop
                 this.rotorAngle += 2 * dt * (this.speed / 5);
             }
+            // Keep rotorAngle in [0, 2π) to avoid floating-point wobble at large values
+            this.rotorAngle %= (Math.PI * 2);
         } else if (Math.abs(this.speed) > 0.5) {
             const vx = Math.cos(this.angle) * this.speed * dt;
             const vy = Math.sin(this.angle) * this.speed * dt;
@@ -292,7 +320,7 @@ class Vehicle {
         if (window.trafficLights && !this.isPolicePatrol && !obstacle && roadInfo && roadInfo.type !== 'intersection') {
             const na = ((this.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
             const d = (na < Math.PI / 4 || na > Math.PI * 7 / 4) ? 'right'
-                    : na < Math.PI * 3 / 4 ? 'down'
+                : na < Math.PI * 3 / 4 ? 'down'
                     : na < Math.PI * 5 / 4 ? 'left' : 'up';
             const BD = TILE * 2; // braking distance: 2 tiles before stop line
 
@@ -525,7 +553,8 @@ class Vehicle {
         }
 
         ctx.save();
-        ctx.translate(this.x, this.y);
+        // Round to integer pixels to eliminate sub-pixel wobble during rotation
+        ctx.translate(Math.round(this.x), Math.round(this.y));
         // Use per-type rotation offset so each sprite faces the right way
         ctx.rotate(this.angle + this.spriteRot);
 
@@ -533,13 +562,17 @@ class Vehicle {
             const lift = this.liftScale;
             const bodyScale = 1.0 + lift * 0.38;
 
-            // Shadow — offset and size grow with altitude, giving the illusion of height
-            const shadowOffX = 6 + lift * 22;
-            const shadowOffY = 6 + lift * 22;
-            ctx.fillStyle = `rgba(0, 0, 0, ${0.28 - lift * 0.1})`;
+            // Shadow — drawn in un-rotated space so it always falls to the SE
+            // regardless of which direction the helicopter is facing
+            ctx.save();
+            ctx.rotate(-(this.angle + this.spriteRot)); // undo helicopter rotation
+            const shadowOffX = 8 + lift * 22;
+            const shadowOffY = 8 + lift * 22;
+            ctx.fillStyle = `rgba(0, 0, 0, ${0.28 - lift * 0.08})`;
             ctx.beginPath();
             ctx.ellipse(shadowOffX, shadowOffY, 25 + lift * 14, 12 + lift * 6, 0, 0, Math.PI * 2);
             ctx.fill();
+            ctx.restore();
 
             // Scale the entire helicopter body up as it lifts off
             ctx.save();
@@ -547,29 +580,35 @@ class Vehicle {
 
             if (this.img && this.img.complete && this.img.width > 0) {
                 // Sprite-based helicopter body
+                // The rotor hub in the sprite is at ~30% from top, not the geometric
+                // center (50%).  Shift the body down so the hub sits at (0,0) — the
+                // same point the propeller rotates around.
                 const drawW = 80;
                 const drawH = this.img.height * (drawW / this.img.width);
                 ctx.drawImage(this.img, -drawW / 2, -drawH / 2, drawW, drawH);
             } else {
-                // Fallback procedural body
+                // Fallback procedural body — front at top (negative Y) to match spriteRot=PI/2
                 ctx.fillStyle = this.customColor || this.color;
                 ctx.beginPath();
-                ctx.ellipse(0, 0, 22, 10, 0, 0, Math.PI * 2);
+                ctx.ellipse(0, 0, 10, 22, 0, 0, Math.PI * 2); // tall body (front=top)
                 ctx.fill();
                 ctx.strokeStyle = '#550000';
                 ctx.lineWidth = 1;
                 ctx.stroke();
+                // Cockpit window at front (top)
                 ctx.fillStyle = 'rgba(150, 200, 255, 0.6)';
                 ctx.beginPath();
-                ctx.ellipse(10, 0, 8, 7, 0, 0, Math.PI * 2);
+                ctx.ellipse(0, -10, 7, 8, 0, 0, Math.PI * 2);
                 ctx.fill();
+                // Tail boom going down (rear)
                 ctx.fillStyle = this.color;
-                ctx.fillRect(-35, -2, 20, 4);
+                ctx.fillRect(-2, 12, 4, 22);
+                // Tail rotor at bottom
                 ctx.fillStyle = '#666';
                 ctx.save();
-                ctx.translate(-35, 0);
+                ctx.translate(0, 34);
                 ctx.rotate(this.rotorAngle * 2.5);
-                ctx.fillRect(-6, -1, 12, 2);
+                ctx.fillRect(-1, -6, 2, 12);
                 ctx.restore();
             }
 
@@ -598,7 +637,7 @@ class Vehicle {
             ctx.restore(); // end body scale
 
         } else if (this.img && this.img.complete) {
-            if (this.customColor) ctx.filter = this._colorFilter();
+            if (this.customColor && this.type !== 'sports' && this.type !== 'sedan') ctx.filter = this._colorFilter();
             let scale = Math.max(this.w / this.img.width, this.h / this.img.height) * 2.2;
             if (this.type === 'motorcycle') scale *= 0.7;
             ctx.drawImage(this.img, -this.img.width * scale / 2, -this.img.height * scale / 2, this.img.width * scale, this.img.height * scale);
@@ -644,8 +683,8 @@ class Vehicle {
         // Universal colorize: strip original color → sepia (consistent ~38° warm hue base)
         // → rotate hue to target → scale saturation and brightness to match
         const hueShift = (target.h - 38).toFixed(0);
-        const satMult  = Math.max(target.s / 25, 0.5).toFixed(2);
-        const brtMult  = (target.l / 50).toFixed(2);
+        const satMult = Math.max(target.s / 25, 0.5).toFixed(2);
+        const brtMult = (target.l / 50).toFixed(2);
         return `grayscale(1) sepia(1) hue-rotate(${hueShift}deg) saturate(${satMult}) brightness(${brtMult})`;
     }
 
@@ -695,9 +734,9 @@ class Vehicle {
         // Wheels (slightly outside body bounds)
         ctx.fillStyle = '#111';
         ctx.fillRect(-hw - 2, -hh + 4, 5, 9);   // FL
-        ctx.fillRect(hw - 3,  -hh + 4, 5, 9);   // FR
+        ctx.fillRect(hw - 3, -hh + 4, 5, 9);   // FR
         ctx.fillRect(-hw - 2, hh - 13, 5, 9);   // RL
-        ctx.fillRect(hw - 3,  hh - 13, 5, 9);   // RR
+        ctx.fillRect(hw - 3, hh - 13, 5, 9);   // RR
 
         // Main body
         ctx.fillStyle = col;
@@ -706,7 +745,7 @@ class Vehicle {
         // Side edge shading
         ctx.fillStyle = shade(0.55);
         ctx.fillRect(-hw + 1, -hh, 3, H);
-        ctx.fillRect(hw - 4,  -hh, 3, H);
+        ctx.fillRect(hw - 4, -hh, 3, H);
 
         // Hood (front section)
         ctx.fillStyle = shade(0.88);
@@ -731,12 +770,12 @@ class Vehicle {
         // Headlights (front)
         ctx.fillStyle = '#ffffc8';
         ctx.fillRect(-hw + 2, -hh + 1, 8, 5);
-        ctx.fillRect(hw - 10,  -hh + 1, 8, 5);
+        ctx.fillRect(hw - 10, -hh + 1, 8, 5);
 
         // Taillights (rear)
         ctx.fillStyle = '#cc0000';
         ctx.fillRect(-hw + 2, hh - 6, 7, 5);
-        ctx.fillRect(hw - 9,  hh - 6, 7, 5);
+        ctx.fillRect(hw - 9, hh - 6, 7, 5);
 
         if (isPolice) {
             // Light bar across the cabin
@@ -746,7 +785,7 @@ class Vehicle {
             ctx.fillStyle = '#ff2222';
             ctx.fillRect(-9, barY, 8, 6);
             ctx.fillStyle = '#2222ff';
-            ctx.fillRect(1,  barY, 8, 6);
+            ctx.fillRect(1, barY, 8, 6);
             // White livery stripe on hood
             ctx.fillStyle = 'rgba(255,255,255,0.35)';
             ctx.fillRect(-hw + 4, -hh, W - 8, 3);

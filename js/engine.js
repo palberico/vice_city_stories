@@ -75,24 +75,47 @@ class Game {
     async loadAssets() {
         const assetList = [
             'player', 'car_sports', 'car_sedan', 'car_police', 'motorcycle', 'logo',
-            'helicopter', 'propeller',
+            'helicopter', 'helicopter_police', 'propeller', 'armored_car',
+            'helicopter_red', 'helicopter_green', 'helicopter_blue',
+            'car_sports_red', 'car_sports_blue', 'car_sports_green', 'car_sports_white',
+            'car_sedan_red', 'car_sedan_blue', 'car_sedan_green', 'car_sedan_white',
+            'hospital', 'police_building', 'bank',
             'sidewalk/corner',
-            'sidewalk/top_plain', 'sidewalk/top_sidewalk',
-            'sidewalk/right_plain', 'sidewalk/right_sidewalk',
-            'sidewalk/bottom_plain', 'sidewalk/bottom_sidewalk',
-            'sidewalk/left_plain', 'sidewalk/left_sidewalk',
-            'npc_business_man_front',      'npc_business_man_back',
+            'sidewalk/sidewalk_plain',
+            'npc_business_man_front', 'npc_business_man_back',
             'npc_business_man_front_walk', 'npc_business_man_back_walk',
-            'npc_beach_tourist_front',     'npc_beach_tourist_back',
-            'npc_beach_tourist_front_walk','npc_beach_tourist_back_walk',
-            'npc_casual_front',            'npc_casual_back',
-            'npc_casual_front_walk',       'npc_casual_back_walk',
-            'npc_jogger_front',            'npc_jogger_back',
-            'npc_jogger_front_walk',       'npc_jogger_back_walk',
+            'npc_beach_tourist_front', 'npc_beach_tourist_back',
+            'npc_beach_tourist_front_walk', 'npc_beach_tourist_back_walk',
+            'npc_casual_front', 'npc_casual_back',
+            'npc_casual_front_walk', 'npc_casual_back_walk',
+            'npc_jogger_front', 'npc_jogger_back',
+            'npc_jogger_front_walk', 'npc_jogger_back_walk',
         ];
         const loadingBar = document.getElementById('loadingBar');
         const loadingScreen = document.getElementById('loading-screen');
         let loaded = 0;
+
+        // Custom paths for assets that don't live at assets/{name}.png
+        const customPaths = {
+            'helicopter': 'assets/vehicles/air/helicopter.png',
+            'helicopter_police': 'assets/vehicles/air/helicopter_police.png',
+            'propeller': 'assets/vehicles/air/propeller.png',
+            'armored_car': 'assets/armored_car.png',
+            'helicopter_red': 'assets/vehicles/air/colors/helicopter_red.png',
+            'helicopter_green': 'assets/vehicles/air/colors/helicopter_green.png',
+            'helicopter_blue': 'assets/vehicles/air/colors/helicopter_blue.png',
+            'car_sports_red':   'assets/vehicles/ground/car_sports_red.png',
+            'car_sports_blue':  'assets/vehicles/ground/car_sports_blue.png',
+            'car_sports_green': 'assets/vehicles/ground/car_sports_green.png',
+            'car_sports_white': 'assets/vehicles/ground/car_sports_white.png',
+            'car_sedan_red':    'assets/vehicles/ground/car_sedan_red.png',
+            'car_sedan_blue':   'assets/vehicles/ground/car_sedan_blue.png',
+            'car_sedan_green':  'assets/vehicles/ground/car_sedan_green.png',
+            'car_sedan_white':  'assets/vehicles/ground/car_sedan_white.png',
+            'hospital':          'assets/buildings/hospital.png',
+            'police_building':   'assets/buildings/police.png',
+            'bank':              'assets/buildings/bank.png',
+        };
 
         const promises = assetList.map(name => {
             return new Promise((resolve) => {
@@ -109,7 +132,7 @@ class Game {
                     if (loadingBar) loadingBar.style.width = `${(loaded / assetList.length) * 100}%`;
                     resolve();
                 };
-                img.src = `assets/${name}.png`;
+                img.src = customPaths[name] || `assets/${name}.png`;
             });
         });
         await Promise.all(promises);
@@ -117,15 +140,19 @@ class Game {
         // Remove checkered/white backgrounds from sprite images (not logo, not sidewalk tiles)
         const spriteNames = [
             'player', 'car_sports', 'car_sedan', 'car_police', 'motorcycle',
-            'helicopter', 'propeller',
-            'npc_business_man_front',      'npc_business_man_back',
+            'helicopter', 'helicopter_police', 'propeller', 'armored_car',
+            'helicopter_red', 'helicopter_green', 'helicopter_blue',
+            'car_sports_red', 'car_sports_blue', 'car_sports_green', 'car_sports_white',
+            'car_sedan_red', 'car_sedan_blue', 'car_sedan_green', 'car_sedan_white',
+            'hospital', 'police_building', 'bank',
+            'npc_business_man_front', 'npc_business_man_back',
             'npc_business_man_front_walk', 'npc_business_man_back_walk',
-            'npc_beach_tourist_front',     'npc_beach_tourist_back',
-            'npc_beach_tourist_front_walk','npc_beach_tourist_back_walk',
-            'npc_casual_front',            'npc_casual_back',
-            'npc_casual_front_walk',       'npc_casual_back_walk',
-            'npc_jogger_front',            'npc_jogger_back',
-            'npc_jogger_front_walk',       'npc_jogger_back_walk',
+            'npc_beach_tourist_front', 'npc_beach_tourist_back',
+            'npc_beach_tourist_front_walk', 'npc_beach_tourist_back_walk',
+            'npc_casual_front', 'npc_casual_back',
+            'npc_casual_front_walk', 'npc_casual_back_walk',
+            'npc_jogger_front', 'npc_jogger_back',
+            'npc_jogger_front_walk', 'npc_jogger_back_walk',
         ];
         for (const name of spriteNames) {
             if (this.images[name]) {
@@ -215,14 +242,10 @@ class Game {
 
         // Define spray colors early so they can be used for vehicle spawning
         this.sprayColors = [
-            { name: 'Crimson',  hex: '#cc2200' },
-            { name: 'Ocean',    hex: '#2255cc' },
-            { name: 'Gold',     hex: '#ccaa00' },
-            { name: 'Forest',   hex: '#228833' },
-            { name: 'Onyx',     hex: '#222222' },
-            { name: 'Pearl',    hex: '#dddddd' },
-            { name: 'Sunset',   hex: '#cc6600' },
-            { name: 'Royal',    hex: '#882299' },
+            { name: 'Red',   hex: '#cc2200', sportsImg: 'car_sports_red',   sedanImg: 'car_sedan_red' },
+            { name: 'Blue',  hex: '#2255cc', sportsImg: 'car_sports_blue',  sedanImg: 'car_sedan_blue' },
+            { name: 'Green', hex: '#228833', sportsImg: 'car_sports_green', sedanImg: 'car_sedan_green' },
+            { name: 'White', hex: '#dddddd', sportsImg: 'car_sports_white', sedanImg: 'car_sedan_white' },
         ];
 
         // Spawn vehicles with randomised colors
@@ -233,24 +256,27 @@ class Game {
             const type = vehicleTypes[i % vehicleTypes.length];
             const vehicle = new Vehicle(spawn.x, spawn.y, type, this.images);
             vehicle.angle = spawn.angle;
-            // Assign a random paint color from the spray palette
-            vehicle.customColor = this.sprayColors[Math.floor(Math.random() * this.sprayColors.length)].hex;
+            const randColor = this.sprayColors[Math.floor(Math.random() * this.sprayColors.length)];
+            if (type === 'sports' && this.images[randColor.sportsImg]) {
+                vehicle.img = this.images[randColor.sportsImg];
+            } else if (type === 'sedan' && this.images[randColor.sedanImg]) {
+                vehicle.img = this.images[randColor.sedanImg];
+            } else {
+                vehicle.customColor = randColor.hex;
+            }
             this.vehicles.push(vehicle);
         }
 
-        // Spawn 3 permanent police cars in the station parking lot (player can steal them)
+
+        // Two police cars parked on the south side of the station, protruding onto the sidewalk
         {
-            const parkX = 27 * TILE;
-            const parkCY = 28 * TILE + (3 * TILE) / 2; // vertical center of lot
-            for (let i = 0; i < 3; i++) {
-                const policeV = new Vehicle(
-                    parkX + (i * 2 + 0.5) * TILE,
-                    parkCY,
-                    'police',
-                    this.images
-                );
-                policeV.angle = -Math.PI / 2; // facing north toward station
-                policeV.ai.active = false;     // stay parked
+            const stationSouthY = 31 * TILE; // south edge of 6-tile-tall building
+            const carPositions = [29.25 * TILE, 30.75 * TILE];
+            for (const cx of carPositions) {
+                const policeV = new Vehicle(cx, stationSouthY, 'police', this.images);
+                policeV.angle = Math.PI / 2; // facing south
+                policeV.ai.active = false;
+                policeV.isStationParked = true;
                 this.vehicles.push(policeV);
             }
         }
@@ -264,10 +290,10 @@ class Game {
 
         // NPCs
         const npcCharacters = ['business_man', 'beach_tourist', 'casual', 'jogger'].map(name => ({
-            front:      this.images[`npc_${name}_front`],
-            back:       this.images[`npc_${name}_back`],
-            frontWalk:  this.images[`npc_${name}_front_walk`],
-            backWalk:   this.images[`npc_${name}_back_walk`],
+            front: this.images[`npc_${name}_front`],
+            back: this.images[`npc_${name}_back`],
+            frontWalk: this.images[`npc_${name}_front_walk`],
+            backWalk: this.images[`npc_${name}_back_walk`],
         }));
         this.npcManager = new NPCManager(this.world, 150, npcCharacters);
 
@@ -409,7 +435,7 @@ class Game {
             // Wrecks stay in the scene as burnt-out shells — skip update, keep for rendering
             if (v.isWreck) continue;
             // Remove non-wreck destroyed vehicles (non-police cars that just died)
-            if (v.health <= 0 && v.type !== 'helicopter') {
+            if (v.health <= 0 && v.type !== 'helicopter' && !v.isArmoredTarget) {
                 this.vehicles.splice(i, 1);
                 continue;
             }
@@ -480,6 +506,13 @@ class Game {
                     }
                 }
                 if (hitAny) continue;
+
+                // Hit armored car (mission target — special hit counting)
+                if (this.missions && this.missions.armoredCar && b.active) {
+                    if (this.missions.hitArmoredCar(b, this.particles, this.audio)) {
+                        continue;
+                    }
+                }
 
                 // Hit Vehicles
                 for (const v of this.vehicles) {
@@ -651,12 +684,9 @@ class Game {
         // Draw store markers
         this.drawStoreMarkers(ctx);
 
-        // Draw parking lot pavement (under vehicles and player)
-        this._drawParkingLot(ctx);
-
-        // Draw ground vehicles
+        // Draw ground vehicles (excluding station-parked cars drawn after buildings)
         for (const v of this.vehicles) {
-            if (v.type !== 'helicopter' && this.camera.isVisible(v.x - 40, v.y - 40, 80, 80)) {
+            if (v.type !== 'helicopter' && !v.isStationParked && this.camera.isVisible(v.x - 40, v.y - 40, 80, 80)) {
                 v.draw(ctx);
             }
         }
@@ -668,7 +698,14 @@ class Game {
         this.player.draw(ctx);
 
         // Draw buildings (on top for depth)
-        this.world.drawBuildings(ctx, this.camera);
+        this.world.drawBuildings(ctx, this.camera, this.images);
+
+        // Draw station-parked police cars on top of the station building sprite
+        for (const v of this.vehicles) {
+            if (v.isStationParked && this.camera.isVisible(v.x - 40, v.y - 40, 80, 80)) {
+                v.draw(ctx);
+            }
+        }
 
         // Draw special location overlays (on top of buildings)
         this._drawSpecialLocations(ctx);
@@ -1003,11 +1040,12 @@ class Game {
     updatePaySpray(dt) {
         this.sprayCooldown = Math.max(0, this.sprayCooldown - dt);
         const near = this.player.inVehicle &&
+            this.player.inVehicle.type !== 'helicopter' &&
             Collision.dist(this.player.x, this.player.y, PAY_SPRAY_PX.x, PAY_SPRAY_PX.y) < 200;
 
-        if (near) {
+        if (near && this.sprayCooldown <= 0) {
             this.sprayOpen = true;
-            if (this.sprayCooldown <= 0) {
+            {
                 // Number keys 1-8 pick color + repair
                 for (let i = 0; i < this.sprayColors.length; i++) {
                     const key = String(i + 1);
@@ -1016,13 +1054,23 @@ class Game {
                         const cost = 500;
                         if (this.player.money >= cost) {
                             this.player.money -= cost;
-                            this.player.inVehicle.customColor = this.sprayColors[i].hex;
-                            this.player.inVehicle.health = 200;
+                            const sc = this.sprayColors[i];
+                            const v = this.player.inVehicle;
+                            if (v.type === 'sports' && this.images[sc.sportsImg]) {
+                                v.img = this.images[sc.sportsImg];
+                                v.customColor = null;
+                            } else if (v.type === 'sedan' && this.images[sc.sedanImg]) {
+                                v.img = this.images[sc.sedanImg];
+                                v.customColor = null;
+                            } else {
+                                v.customColor = sc.hex;
+                            }
+                            v.health = 200;
                             this.player.wantedLevel = 0;
-                            this.hud.notify(`Repainted ${this.sprayColors[i].name} & repaired — $${cost}  ★ Cleared!`);
+                            this.hud.notify(`Repainted ${sc.name} & repaired — $${cost}  ★ Cleared!`);
                             this.audio.playPickup();
                             this.sprayOpen = false;
-                            this.sprayCooldown = 1.0;
+                            this.sprayCooldown = 10.0;
                         } else {
                             this.hud.notify('Not enough money! Need $500');
                             this.sprayCooldown = 0.5;
@@ -1167,9 +1215,9 @@ class Game {
             ctx.fillStyle = '#111';
             const ww = 5, wh = 9;
             ctx.fillRect(cx - bw / 2 - ww + 1, cy - bh / 2 + 7, ww, wh);
-            ctx.fillRect(cx + bw / 2 - 1,       cy - bh / 2 + 7, ww, wh);
+            ctx.fillRect(cx + bw / 2 - 1, cy - bh / 2 + 7, ww, wh);
             ctx.fillRect(cx - bw / 2 - ww + 1, cy + bh / 2 - 16, ww, wh);
-            ctx.fillRect(cx + bw / 2 - 1,       cy + bh / 2 - 16, ww, wh);
+            ctx.fillRect(cx + bw / 2 - 1, cy + bh / 2 - 16, ww, wh);
         }
     }
 
@@ -1177,11 +1225,9 @@ class Game {
         if (!this.sprayOpen) return;
         const W = canvas.width, H = canvas.height;
         const vehicle = this.player.inVehicle;
-        const vtype = vehicle ? vehicle.type : 'sedan';
-        const currentColor = vehicle ? (vehicle.customColor || VEHICLE_TYPES[vtype].color) : '#888';
 
-        // Panel — wider to fit car previews
-        const pw = 520, ph = 310;
+        // Panel
+        const pw = 340, ph = 180;
         const px = W / 2 - pw / 2, py = H / 2 - ph / 2;
 
         ctx.save();
@@ -1195,115 +1241,40 @@ class Game {
         ctx.fillStyle = '#ff6600';
         ctx.font = 'bold 18px "Segoe UI", Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('PAY & SPRAY', W / 2, py + 26);
-
-        // Current car + color indicator
-        ctx.fillStyle = '#bbb';
-        ctx.font = '11px "Segoe UI", Arial';
-        ctx.fillText(`Current: ${VEHICLE_TYPES[vtype].name}`, W / 2 - 70, py + 46);
-        ctx.fillStyle = currentColor;
-        ctx.fillRect(W / 2 + 10, py + 35, 28, 14);
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(W / 2 + 10, py + 35, 28, 14);
+        ctx.fillText('PAY & SPRAY', W / 2, py + 28);
 
         ctx.fillStyle = '#888';
         ctx.font = '11px "Segoe UI", Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('Choose a color — $500 repairs, repaints & clears stars', W / 2, py + 62);
+        ctx.fillText('Choose a color — $500 repairs, repaints & clears stars', W / 2, py + 48);
 
-        // 8 swatches: 4 columns × 2 rows, each with a mini car
-        const swW = 110, swH = 110;
-        const cols = 4;
-        const gridX = px + (pw - cols * swW) / 2;
-        const gridY = py + 74;
+        // 4 swatches in a single row
+        const swW = 70, swH = 70;
+        const gridX = px + (pw - this.sprayColors.length * swW) / 2;
+        const gridY = py + 60;
 
         for (let i = 0; i < this.sprayColors.length; i++) {
-            const col = i % cols;
-            const row = Math.floor(i / cols);
-            const bx = gridX + col * swW;
-            const by = gridY + row * swH;
+            const bx = gridX + i * swW;
             const sc = this.sprayColors[i];
             const isSelected = vehicle && vehicle.customColor === sc.hex;
 
-            // Swatch background
-            ctx.fillStyle = isSelected ? 'rgba(255,150,0,0.25)' : 'rgba(255,255,255,0.06)';
-            ctx.fillRect(bx + 2, by + 2, swW - 4, swH - 4);
-            ctx.strokeStyle = isSelected ? '#ff9900' : 'rgba(255,255,255,0.2)';
-            ctx.lineWidth = isSelected ? 2 : 1;
-            ctx.strokeRect(bx + 2, by + 2, swW - 4, swH - 4);
-
-            // Mini car centred in top part of swatch
-            ctx.save();
-            ctx.translate(bx + swW / 2, by + 44);
-            this._drawMiniCar(ctx, 0, 0, sc.hex, vtype);
-            ctx.restore();
+            // Color swatch
+            ctx.fillStyle = sc.hex;
+            ctx.fillRect(bx + 6, gridY + 4, swW - 12, swH - 24);
+            ctx.strokeStyle = isSelected ? '#ff9900' : 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = isSelected ? 3 : 1;
+            ctx.strokeRect(bx + 6, gridY + 4, swW - 12, swH - 24);
 
             // Color name + key
             ctx.fillStyle = isSelected ? '#ff9900' : '#ddd';
             ctx.font = `${isSelected ? 'bold ' : ''}11px "Segoe UI", Arial`;
             ctx.textAlign = 'center';
-            ctx.fillText(`[${i + 1}] ${sc.name}`, bx + swW / 2, by + swH - 16);
+            ctx.fillText(`[${i + 1}] ${sc.name}`, bx + swW / 2, gridY + swH - 6);
         }
 
         ctx.restore();
     }
 
-    _drawParkingLot(ctx) {
-        const parkX = 27 * TILE;
-        const parkY = 28 * TILE;
-        const parkW = 6 * TILE;
-        const parkH = 3 * TILE;
-        ctx.fillStyle = '#4a4a4a';
-        ctx.fillRect(parkX, parkY, parkW, parkH);
-    }
-
     _drawSpecialLocations(ctx) {
-        // ---- Hospital ----
-        const hx = HOSPITAL_PX.x;
-        const hy = HOSPITAL_PX.y;
-        const pulse = Math.sin(Date.now() / 600) * 0.15 + 0.85;
-
-        ctx.save();
-        // Red cross on building roof
-        ctx.fillStyle = `rgba(220, 0, 0, ${pulse})`;
-        ctx.fillRect(hx - 10, hy - 34, 20, 68);
-        ctx.fillRect(hx - 34, hy - 10, 68, 20);
-        // White border on cross
-        ctx.strokeStyle = `rgba(255, 255, 255, 0.8)`;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(hx - 10, hy - 34, 20, 68);
-        ctx.strokeRect(hx - 34, hy - 10, 68, 20);
-        // Label
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 11px Arial';
-        ctx.textAlign = 'center';
-        ctx.shadowColor = '#000';
-        ctx.shadowBlur = 3;
-        ctx.fillText('HOSPITAL', hx, hy + 60);
-        ctx.restore();
-
-        // ---- Police Station ----
-        const sx = STATION_PX.x;
-        const sy = STATION_PX.y;
-
-        ctx.save();
-        // "POLICE" sign on building roof
-        ctx.fillStyle = 'rgba(0, 40, 100, 0.85)';
-        ctx.fillRect(sx - 52, sy - 22, 104, 28);
-        ctx.strokeStyle = '#4488ff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(sx - 52, sy - 22, 104, 28);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 14px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.shadowColor = '#000';
-        ctx.shadowBlur = 4;
-        ctx.fillText('POLICE', sx, sy - 8);
-        ctx.textBaseline = 'alphabetic';
-        ctx.restore();
-
         // ---- Lawyer's Office (NE) ----
         const lx = LAWYER_PX.x, ly = LAWYER_PX.y;
         const lawPulse = Math.sin(Date.now() / 700) * 0.2 + 0.8;
@@ -1374,52 +1345,47 @@ class Game {
 
         // ---- First National Bank ----
         {
-            const bx = BANK_PX.x, by = BANK_PX.y;
+            const bx = BANK_PX.x - 4 * TILE, by = BANK_PX.y - 1.5 * TILE;
             const now = Date.now();
             const cdMs = this.bankLastRobbedAt ? Math.max(0, 3600000 - (now - this.bankLastRobbedAt)) : 0;
-            const bkPulse = Math.sin(Date.now() / 500) * 0.15 + 0.85;
-            const isNear = Collision.dist(this.player.x, this.player.y, bx, by) < 80;
+            const isNear = Collision.dist(this.player.x, this.player.y, BANK_PX.x, BANK_PX.y) < 250;
+            const bankPulse = Math.sin(Date.now() / 500) * 0.2 + 0.8;
 
             ctx.save();
-            // Building sign backdrop
-            ctx.fillStyle = cdMs > 0 ? `rgba(80, 20, 20, ${0.4 * bkPulse})` : `rgba(120, 90, 0, ${0.35 * bkPulse})`;
-            ctx.fillRect(bx - 52, by - 44, 104, 52);
-            ctx.strokeStyle = cdMs > 0 ? `rgba(220, 60, 60, ${bkPulse})` : `rgba(220, 170, 0, ${bkPulse})`;
-            ctx.lineWidth = 2;
-            ctx.strokeRect(bx - 52, by - 44, 104, 52);
-
-            // Name
-            ctx.fillStyle = cdMs > 0 ? '#ff6666' : '#ffd700';
-            ctx.font = 'bold 11px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.shadowColor = '#000';
-            ctx.shadowBlur = 4;
-            ctx.fillText('FIRST NATIONAL BANK', bx, by - 30);
+            ctx.shadowBlur = 3;
 
-            // Status line
-            if (cdMs > 0) {
-                const mins = Math.floor(cdMs / 60000);
-                const secs = Math.floor((cdMs % 60000) / 1000);
-                ctx.fillStyle = '#ff4444';
-                ctx.font = '9px Arial';
-                ctx.fillText(`SECURE — ${mins}m ${secs}s`, bx, by - 16);
-            } else {
-                ctx.fillStyle = '#00ffcc';
-                ctx.font = '9px Arial';
-                ctx.fillText('$5K–$10K INSIDE', bx, by - 16);
-            }
+            // Pulsing box (matches hospital style, yellow)
+            ctx.fillStyle = `rgba(200, 170, 0, ${0.22 * bankPulse})`;
+            ctx.fillRect(bx - 40, by - 40, 80, 80);
+            ctx.strokeStyle = `rgba(255, 220, 0, ${bankPulse})`;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(bx - 40, by - 40, 80, 80);
+
+            // Dollar sign icon
+            ctx.fillStyle = `rgba(255, 220, 0, ${bankPulse})`;
+            ctx.font = 'bold 28px Arial';
+            ctx.fillText('$', bx, by - 8);
+
+            // "Bank" label
+            ctx.fillStyle = '#ffe066';
+            ctx.font = 'bold 10px Arial';
+            ctx.fillText('Bank', bx, by + 20);
 
             // Proximity prompt
             if (isNear) {
                 if (cdMs > 0) {
+                    const mins = Math.floor(cdMs / 60000);
+                    const secs = Math.floor((cdMs % 60000) / 1000);
                     ctx.fillStyle = '#ff2222';
                     ctx.font = 'bold 10px Arial';
-                    ctx.fillText('⚠ YOU WILL BE ARRESTED', bx, by - 3);
+                    ctx.fillText(`⚠ SECURE — ${mins}m ${secs}s`, bx, by + 34);
                 } else {
                     ctx.fillStyle = '#ffff00';
                     ctx.font = 'bold 10px Arial';
-                    ctx.fillText('Press [E] to Rob', bx, by - 3);
+                    ctx.fillText('Press [E] to Rob', bx, by + 34);
                 }
             }
 

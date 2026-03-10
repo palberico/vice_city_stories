@@ -160,16 +160,15 @@ const MISSION_DATA = [
     {
         id: 'the_armored_job',
         name: 'The Armored Job',
-        description: 'Ambush an armored truck and deliver the loot to the SW.',
+        description: 'Destroy the armored truck before it escapes!',
         reward: 5000,
         startTile: { x: 24, y: 34 },   // Center-W
-        available: false,
+        available: true,
         steps: [
-            { type: 'go_to', text: 'Go to the ambush point', targetTile: { x: 34, y: 44 }, radius: 80 },
-            { type: 'shoot', text: 'Take out the guards', targetTile: { x: 34, y: 44 }, radius: 120 },
-            { type: 'enter_vehicle', text: 'Get in a vehicle' },
-            { type: 'drive_to', text: 'Escape west', targetTile: { x: 12, y: 44 }, radius: 100 },
-            { type: 'drive_to', text: 'Deliver to the SW warehouse', targetTile: { x: 12, y: 68 }, radius: 100 }
+            { type: 'go_to', text: 'Get to the SE to intercept the armored car', targetTile: { x: 68, y: 60 }, radius: 200 },
+            { type: 'shoot_armored_car', text: 'Shoot the armored car! (0/3 hits)' },
+            { type: 'lose_wanted', text: 'Lose the cops! (5 stars)' },
+            { type: 'drive_to', text: 'Lay low — get to the NW safehouse', targetTile: { x: 22, y: 20 }, radius: 100 }
         ]
     }
 ];
@@ -185,6 +184,8 @@ class MissionSystem {
         this.repoVehicle = null;
         this.missionTimer = 0;
         this.timerActive = false;
+        this.armoredCar = null;
+        this.armoredCarHits = 0;
         this.setupMarkers();
     }
 
@@ -222,6 +223,65 @@ class MissionSystem {
         }
     }
 
+    spawnArmoredCar(vehicles, images) {
+        // Spawn in SE corner on the last horizontal road (y=68) near the last vertical road (x=70)
+        const startX = 71 * TILE;
+        const startY = 69 * TILE;
+        const car = new Vehicle(startX, startY, 'armored', images);
+        car.ai.active = false; // we drive it ourselves with waypoints
+        car.speed = 0;
+        car.angle = Math.PI; // face left initially
+        car.isArmoredTarget = true;
+        car.health = 999; // tough — we track hits separately
+        // Waypoint path: SE → SW along bottom road, then SW → NW up the west road
+        car._waypoints = [
+            { x: 11 * TILE, y: 69 * TILE },  // drive left to SW along bottom road
+            { x: 11 * TILE, y: 9 * TILE },   // then drive up to NW
+        ];
+        car._waypointIdx = 0;
+        car._armoredSpeed = 90; // pixels per second
+        this.armoredCar = car;
+        this.armoredCarHits = 0;
+        vehicles.push(car);
+    }
+
+    removeArmoredCar(vehicles) {
+        if (this.armoredCar) {
+            const idx = vehicles.indexOf(this.armoredCar);
+            if (idx !== -1) vehicles.splice(idx, 1);
+            this.armoredCar = null;
+            this.armoredCarHits = 0;
+        }
+    }
+
+    hitArmoredCar(bullet, particles, audio) {
+        if (!this.armoredCar || !this.armoredCar.isArmoredTarget) return false;
+        // Check collision
+        if (!Collision.aabb(bullet, this.armoredCar.getBounds())) return false;
+
+        this.armoredCarHits++;
+        particles.impact(bullet.x, bullet.y);
+        bullet.active = false;
+
+        if (this.armoredCarHits >= 3) {
+            // Blow it up!
+            particles.explosion(this.armoredCar.x, this.armoredCar.y);
+            audio.playExplosion();
+            this.armoredCar.health = 0;
+            this.showMessage('The armored car is destroyed! MISSION COMPLETE!');
+        } else {
+            this.showMessage(`Hit! (${this.armoredCarHits}/3)`);
+            // Update current step text
+            if (this.activeMission && this.activeMission.id === 'the_armored_job') {
+                const step = this.activeMission.steps[this.currentStep];
+                if (step && step.type === 'shoot_armored_car') {
+                    step.text = `Shoot the armored car! (${this.armoredCarHits}/3 hits)`;
+                }
+            }
+        }
+        return true;
+    }
+
     update(dt, player, audio, vehicles, images) {
         this.messageTimer = Math.max(0, this.messageTimer - dt);
 
@@ -244,12 +304,44 @@ class MissionSystem {
             this.failMission('The car was destroyed!', audio, vehicles);
             return;
         }
+        // Armored car escape check — if it reaches NW, mission fails
+        if (this.activeMission.id === 'the_armored_job' && this.armoredCar) {
+            const escapeX = 13 * TILE;
+            const escapeY = 13 * TILE;
+            if (this.armoredCar.x <= escapeX && this.armoredCar.y <= escapeY) {
+                this.failMission('The armored car escaped!', audio, vehicles);
+                return;
+            }
+        }
         // Countdown timer — starts after the player completes step 0 (enter_vehicle) on timed missions
         if (this.activeMission.timeLimit && this.timerActive) {
             this.missionTimer -= dt;
             if (this.missionTimer <= 0) {
                 this.failMission('Time ran out!', audio, vehicles);
                 return;
+            }
+        }
+
+        // ── Armored car waypoint AI ──
+        if (this.activeMission.id === 'the_armored_job' && this.armoredCar && this.armoredCar.health > 0) {
+            const car = this.armoredCar;
+            if (car._waypoints && car._waypointIdx < car._waypoints.length) {
+                const wp = car._waypoints[car._waypointIdx];
+                const dx = wp.x - car.x;
+                const dy = wp.y - car.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 40) {
+                    // Reached waypoint, advance to next
+                    car._waypointIdx++;
+                    if (car._waypointIdx < car._waypoints.length) {
+                        const nwp = car._waypoints[car._waypointIdx];
+                        car.angle = Math.atan2(nwp.y - car.y, nwp.x - car.x);
+                    }
+                } else {
+                    car.angle = Math.atan2(dy, dx);
+                    car.x += Math.cos(car.angle) * car._armoredSpeed * dt;
+                    car.y += Math.sin(car.angle) * car._armoredSpeed * dt;
+                }
             }
         }
 
@@ -289,6 +381,17 @@ class MissionSystem {
                     }
                 }
                 break;
+            case 'shoot_armored_car':
+                // Completed when 3 hits registered (handled by hitArmoredCar)
+                if (this.armoredCarHits >= 3) {
+                    completed = true;
+                    player.wantedLevel = 5;
+                    player.wantedDecayTimer = 0;
+                }
+                break;
+            case 'lose_wanted':
+                if (player.wantedLevel === 0) completed = true;
+                break;
         }
 
         if (completed) {
@@ -317,6 +420,9 @@ class MissionSystem {
         if (this.activeMission.id === 'repo_job') {
             this.spawnRepoVehicle(vehicles, images);
         }
+        if (this.activeMission.id === 'the_armored_job') {
+            this.spawnArmoredCar(vehicles, images);
+        }
     }
 
     completeMission(player, audio, vehicles) {
@@ -324,6 +430,7 @@ class MissionSystem {
         this.showMessage(`MISSION COMPLETE: ${this.activeMission.name}! +$${this.activeMission.reward}`);
 
         if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
+        if (this.activeMission.id === 'the_armored_job') this.removeArmoredCar(vehicles);
 
         this.activeMission.completed = true;
         this.activeMission = null;
@@ -342,6 +449,7 @@ class MissionSystem {
         const name = this.activeMission.name;
         this.showMessage(`MISSION FAILED: ${name} — ${reason}`);
         if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
+        if (this.activeMission.id === 'the_armored_job') this.removeArmoredCar(vehicles);
         this.activeMission = null;
         this.currentStep = 0;
         this.timerActive = false;
@@ -434,6 +542,36 @@ class MissionSystem {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('REPO', this.repoVehicle.x, this.repoVehicle.y - this.repoVehicle.h / 2 - 15);
+            ctx.restore();
+        }
+
+        // Armored car target marker
+        if (this.armoredCar && this.armoredCar.health > 0) {
+            const pulse = Math.sin(Date.now() / 200) * 8;
+            ctx.save();
+            ctx.fillStyle = 'rgba(255, 50, 50, 0.2)';
+            ctx.beginPath();
+            ctx.arc(this.armoredCar.x, this.armoredCar.y, 50 + pulse, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 50, 50, 0.9)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(this.armoredCar.x, this.armoredCar.y, 35, 0, Math.PI * 2);
+            ctx.stroke();
+            // Crosshair on target
+            ctx.strokeStyle = 'rgba(255, 50, 50, 0.6)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(this.armoredCar.x - 20, this.armoredCar.y);
+            ctx.lineTo(this.armoredCar.x + 20, this.armoredCar.y);
+            ctx.moveTo(this.armoredCar.x, this.armoredCar.y - 20);
+            ctx.lineTo(this.armoredCar.x, this.armoredCar.y + 20);
+            ctx.stroke();
+            ctx.fillStyle = '#ff3333';
+            ctx.font = 'bold 10px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('TARGET', this.armoredCar.x, this.armoredCar.y - this.armoredCar.h / 2 - 18);
             ctx.restore();
         }
     }

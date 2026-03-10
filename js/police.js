@@ -21,23 +21,40 @@ class PoliceUnit {
 }
 
 class PoliceHelicopter {
-    constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.targetX = x;
-        this.targetY = y;
+    constructor(images) {
+        this.x = STATION_PX.x;
+        this.y = STATION_PX.y + TILE * 0.5;
+        this.targetX = this.x;
+        this.targetY = this.y;
         this.angle = 0;
-        this.altitude = 0;
         this.rotorAngle = 0;
+        this.liftScale = 0;   // 0 = grounded, 1 = fully airborne
         this.health = 200;
         this.alive = true;
+        this.active = false;  // false = parked on roof
         this.shootTimer = 0;
         this.spotlightAngle = 0;
         this.speed = 250;
+        this.img = images ? images['helicopter_police'] : null;
+        this.propellerImg = images ? images['propeller'] : null;
     }
 
     update(dt, player, audio, particles) {
         if (!this.alive) return;
+
+        // Rotor: slow idle when parked, fast when active
+        this.rotorAngle += (this.active ? 15 : 2) * dt;
+
+        if (!this.active) {
+            // Slowly land back on roof
+            this.liftScale = Math.max(0, this.liftScale - dt * 1.2);
+            return;
+        }
+
+        // Lift off animation
+        this.liftScale = Math.min(1, this.liftScale + dt * 1.2);
+
+        this.spotlightAngle += 0.8 * dt;
 
         this.targetX = player.x + Math.sin(Date.now() / 2000) * 100;
         this.targetY = player.y + Math.cos(Date.now() / 2000) * 100;
@@ -46,20 +63,18 @@ class PoliceHelicopter {
         const dy = this.targetY - this.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist > 10) {
+        if (dist > 10 && this.liftScale > 0.3) {
             this.x += (dx / dist) * this.speed * dt;
             this.y += (dy / dist) * this.speed * dt;
+            this.angle = Math.atan2(dy, dx) - Math.PI / 2;
         }
 
         this.x = Math.max(100, Math.min(WORLD_PX_W - 100, this.x));
         this.y = Math.max(100, Math.min(WORLD_PX_H - 100, this.y));
 
-        this.rotorAngle += 15 * dt;
-        this.spotlightAngle += 0.8 * dt;
-
         this.shootTimer -= dt;
         const playerDist = Math.sqrt((player.x - this.x) ** 2 + (player.y - this.y) ** 2);
-        if (this.shootTimer <= 0 && playerDist < 500) {
+        if (this.shootTimer <= 0 && playerDist < 500 && this.liftScale > 0.5) {
             const bulletAngle = Math.atan2(player.y - this.y, player.x - this.x) + (Math.random() - 0.5) * 0.3;
             const bullet = new Bullet(this.x, this.y, bulletAngle, 600, 8, 'police');
             player.weapons.bullets.push(bullet);
@@ -71,82 +86,78 @@ class PoliceHelicopter {
     draw(ctx) {
         if (!this.alive) return;
 
+        const bodyScale = 1.0 + this.liftScale * 0.38;
+
+        // Shadow (grows as helicopter lifts)
+        if (this.liftScale > 0) {
+            ctx.save();
+            ctx.fillStyle = `rgba(0, 0, 0, ${0.22 - this.liftScale * 0.08})`;
+            ctx.beginPath();
+            ctx.ellipse(
+                this.x + 8 + this.liftScale * 22,
+                this.y + 8 + this.liftScale * 22,
+                30 * bodyScale, 20 * bodyScale, 0, 0, Math.PI * 2
+            );
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Spotlight (only when airborne and active)
+        if (this.active && this.liftScale > 0.5) {
+            ctx.save();
+            const spotX = this.x + Math.cos(this.spotlightAngle) * 40;
+            const spotY = this.y + Math.sin(this.spotlightAngle) * 40;
+            const gradient = ctx.createRadialGradient(spotX, spotY, 5, spotX, spotY, 80);
+            gradient.addColorStop(0, 'rgba(255, 255, 200, 0.15)');
+            gradient.addColorStop(1, 'rgba(255, 255, 200, 0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(spotX, spotY, 80, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Body
         ctx.save();
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-        ctx.beginPath();
-        ctx.ellipse(this.x + 15, this.y + 15, 35, 20, 0.3, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.translate(Math.round(this.x), Math.round(this.y));
+        ctx.rotate(this.angle + Math.PI / 2);
+        ctx.scale(bodyScale, bodyScale);
+        if (this.img && this.img.complete && this.img.width > 0) {
+            const drawW = 80;
+            const drawH = this.img.height * (drawW / this.img.width);
+            ctx.drawImage(this.img, -drawW / 2, -drawH / 2, drawW, drawH);
+        }
         ctx.restore();
 
+        // Propeller
         ctx.save();
-        const spotX = this.x + Math.cos(this.spotlightAngle) * 40;
-        const spotY = this.y + Math.sin(this.spotlightAngle) * 40;
-        const gradient = ctx.createRadialGradient(spotX, spotY, 5, spotX, spotY, 80);
-        gradient.addColorStop(0, 'rgba(255, 255, 200, 0.15)');
-        gradient.addColorStop(1, 'rgba(255, 255, 200, 0)');
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(spotX, spotY, 80, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-
-        ctx.save();
-        ctx.translate(this.x, this.y);
-
-        ctx.fillStyle = '#1a1a3a';
-        ctx.beginPath();
-        ctx.ellipse(0, 0, 22, 12, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#333366';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        ctx.fillStyle = 'rgba(100, 150, 255, 0.5)';
-        ctx.beginPath();
-        ctx.ellipse(-5, 0, 8, 7, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#1a1a3a';
-        ctx.fillRect(15, -3, 20, 6);
-
-        ctx.fillStyle = '#555';
-        ctx.save();
-        ctx.translate(35, 0);
-        ctx.rotate(this.rotorAngle * 3);
-        ctx.fillRect(-6, -1, 12, 2);
-        ctx.restore();
-
-        ctx.save();
+        ctx.translate(Math.round(this.x), Math.round(this.y));
+        ctx.scale(bodyScale, bodyScale);
         ctx.rotate(this.rotorAngle);
-        ctx.strokeStyle = 'rgba(100, 100, 100, 0.7)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(-30, 0); ctx.lineTo(30, 0);
-        ctx.moveTo(0, -30); ctx.lineTo(0, 30);
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(150, 150, 150, 0.08)';
-        ctx.beginPath();
-        ctx.arc(0, 0, 30, 0, Math.PI * 2);
-        ctx.fill();
+        if (this.propellerImg && this.propellerImg.complete && this.propellerImg.width > 0) {
+            const propW = 80;
+            const propH = this.propellerImg.height * (propW / this.propellerImg.width);
+            ctx.drawImage(this.propellerImg, -propW / 2, -propH / 2, propW, propH);
+        }
         ctx.restore();
 
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 6px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('POLICE', 0, 3);
+        // Flashing lights when active
+        if (this.active) {
+            const t = Date.now() / 150;
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.fillStyle = Math.sin(t) > 0 ? 'rgba(255,0,0,0.85)' : 'rgba(0,100,255,0.85)';
+            ctx.beginPath();
+            ctx.arc(-8, 0, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = Math.sin(t) > 0 ? 'rgba(0,100,255,0.85)' : 'rgba(255,0,0,0.85)';
+            ctx.beginPath();
+            ctx.arc(8, 0, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
 
-        const t = Date.now() / 150;
-        ctx.fillStyle = Math.sin(t) > 0 ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,255,0.8)';
-        ctx.beginPath();
-        ctx.arc(0, -10, 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = Math.sin(t) > 0 ? 'rgba(0,0,255,0.8)' : 'rgba(255,0,0,0.8)';
-        ctx.beginPath();
-        ctx.arc(0, 10, 3, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.restore();
-
+        // Health bar
         if (this.health < 200) {
             ctx.fillStyle = '#333';
             ctx.fillRect(this.x - 25, this.y - 25, 50, 4);
@@ -247,6 +258,7 @@ class PoliceSystem {
         if (!this.initialized) {
             this.initialized = true;
             this.deployTimer = 0; // first one spawns immediately
+            this.helicopter = new PoliceHelicopter(images);
         }
 
         // ---- Patrol unit management ----
@@ -347,7 +359,7 @@ class PoliceSystem {
                 }
             }
             this.units = [];
-            this.helicopter = null;
+            if (this.helicopter) this.helicopter.active = false;
         } else {
             // Spawn chase units from station based on wanted level
             const vehicleUnits = this.units.filter(u => !u.onFoot);
@@ -361,11 +373,12 @@ class PoliceSystem {
                 this.sirenTimer = 2;
             }
 
-            if (player.wantedLevel >= 5 && !this.helicopter) {
-                this.helicopter = new PoliceHelicopter(
-                    player.x + Math.cos(Math.random() * Math.PI * 2) * 500,
-                    player.y + Math.sin(Math.random() * Math.PI * 2) * 500
-                );
+            if (player.wantedLevel >= 5 && this.helicopter) {
+                if (!this.helicopter.alive) {
+                    // Respawn on roof after being destroyed
+                    this.helicopter = new PoliceHelicopter(images);
+                }
+                this.helicopter.active = true;
             }
 
             if (this.helicopter && this.helicopter.alive) {
@@ -491,7 +504,7 @@ class PoliceSystem {
             ctx.restore();
         }
 
-        if (this.helicopter && this.helicopter.alive) {
+        if (this.helicopter) {
             this.helicopter.draw(ctx);
         }
     }

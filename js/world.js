@@ -333,48 +333,21 @@ class World {
                 x: HBX * TILE, y: HBY * TILE,
                 w: HBW * TILE, h: HBH * TILE,
                 color: '#e0e8f0', height: 40,
-                windows: true, roofColor: '#d0d8e0'
+                windows: true, roofColor: '#d0d8e0',
+                isHospital: true
             });
 
-            // Hospital sidewalk sprite overrides — render specific tiles with sidewalk assets
-            this.hospitalSidewalkSprites = new Map();
-            const left = HBX - 1, right = HBX + HBW, top = HBY - 1, bot = HBY + HBH;
-            const sw = (tx, ty, key, rot) => this.hospitalSidewalkSprites.set(`${tx},${ty}`, { key, rot: rot || 0 });
-
-            // Corners (corner.png rotated 90° CW at each successive corner going clockwise)
-            sw(left,  top, 'sidewalk/corner', 0);
-            sw(right, top, 'sidewalk/corner', Math.PI / 2);
-            sw(right, bot, 'sidewalk/corner', Math.PI);
-            sw(left,  bot, 'sidewalk/corner', -Math.PI / 2);
-
-            // Top edge — mostly top_plain, one top_sidewalk near centre
-            for (let x = HBX; x < HBX + HBW; x++) {
-                sw(x, top, x === HBX + 2 ? 'sidewalk/top_sidewalk' : 'sidewalk/top_plain', 0);
-            }
-            // Right edge — mostly right_plain, one right_sidewalk near centre
-            for (let y = HBY; y < HBY + HBH; y++) {
-                sw(right, y, y === HBY + 2 ? 'sidewalk/right_sidewalk' : 'sidewalk/right_plain', 0);
-            }
-            // Bottom edge — mostly bottom_plain, one bottom_sidewalk near centre
-            for (let x = HBX; x < HBX + HBW; x++) {
-                sw(x, bot, x === HBX + 3 ? 'sidewalk/bottom_sidewalk' : 'sidewalk/bottom_plain', 0);
-            }
-            // Left edge — mostly left_plain, one left_sidewalk near centre
-            for (let y = HBY; y < HBY + HBH; y++) {
-                sw(left, y, y === HBY + 3 ? 'sidewalk/left_sidewalk' : 'sidewalk/left_plain', 0);
-            }
         }
 
         // ---- Police station block (between v=22/v=34 and h=20/h=32) ----
-        // Upper 3 rows = building, lower 3 rows = parking lot (road tiles)
+        // Full 6x6 block is building
         {
             const SBX = 27, SBW = 6;
-            const SBuildY = 25, SBuildH = 3;
-            const SParkY = 28, SParkH = 3;
+            const SBuildY = 25, SBuildH = 6;
             this.buildings = this.buildings.filter(b => {
                 const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
                 const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
-                return !(br >= SBX && bl < SBX + SBW && bb >= SBuildY && bt < SBuildY + SBuildH + SParkH);
+                return !(br >= SBX && bl < SBX + SBW && bb >= SBuildY && bt < SBuildY + SBuildH);
             });
             for (let ty = SBuildY; ty < SBuildY + SBuildH; ty++) {
                 for (let tx = SBX; tx < SBX + SBW; tx++) {
@@ -385,13 +358,33 @@ class World {
                 x: SBX * TILE, y: SBuildY * TILE,
                 w: SBW * TILE, h: SBuildH * TILE,
                 color: '#334466', height: 40,
-                windows: true, roofColor: '#223355'
+                windows: true, roofColor: '#223355',
+                isPoliceStation: true
             });
-            for (let ty = SParkY; ty < SParkY + SParkH; ty++) {
-                for (let tx = SBX; tx < SBX + SBW; tx++) {
-                    this.tiles[ty][tx] = T.ROAD;
+        }
+
+        // ---- Bank block (NE quadrant, between v=46/v=58 and h=20/h=32) ----
+        // Full 6x6 block for collision/sidewalk; sprite drawn at half-size in SW corner
+        {
+            const BBX = 51, BBW = 6;
+            const BBY = 25, BBH = 6;
+            this.buildings = this.buildings.filter(b => {
+                const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
+                const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
+                return !(br >= BBX && bl < BBX + BBW && bb >= BBY && bt < BBY + BBH);
+            });
+            for (let ty = BBY; ty < BBY + BBH; ty++) {
+                for (let tx = BBX; tx < BBX + BBW; tx++) {
+                    this.tiles[ty][tx] = T.BUILDING;
                 }
             }
+            this.buildings.push({
+                x: BBX * TILE, y: BBY * TILE,
+                w: BBW * TILE, h: BBH * TILE,
+                color: '#4a3a20', height: 40,
+                windows: true, roofColor: '#3a2a10',
+                isBank: true
+            });
         }
 
         // Spawn points on sidewalks, parks, and sand
@@ -445,6 +438,39 @@ class World {
                     });
                 }
             }
+        }
+
+        // Build sidewalk sprite map for all buildings
+        this._buildSidewalkSprites();
+    }
+
+    _buildSidewalkSprites() {
+        this.sidewalkSprites = new Map();
+        const set = (tx, ty, key, rot) => {
+            if (ty >= 0 && ty < WORLD_H && tx >= 0 && tx < WORLD_W &&
+                this.tiles[ty][tx] === T.SIDEWALK) {
+                this.sidewalkSprites.set(`${tx},${ty}`, { key, rot: rot || 0 });
+            }
+        };
+        for (const b of this.buildings) {
+            if (!b.isHospital && !b.isPoliceStation && !b.isBank) continue;
+            const bx1 = Math.round(b.x / TILE);
+            const by1 = Math.round(b.y / TILE);
+            const bx2 = bx1 + Math.round(b.w / TILE) - 1;
+            const by2 = by1 + Math.round(b.h / TILE) - 1;
+            // Corners
+            set(bx1 - 1, by1 - 1, 'sidewalk/corner', 0);               // NW
+            set(bx2 + 1, by1 - 1, 'sidewalk/corner', Math.PI / 2);     // NE
+            set(bx2 + 1, by2 + 1, 'sidewalk/corner', Math.PI);         // SE
+            set(bx1 - 1, by2 + 1, 'sidewalk/corner', -Math.PI / 2);   // SW
+            // Top edge
+            for (let tx = bx1; tx <= bx2; tx++) set(tx, by1 - 1, 'sidewalk/sidewalk_plain', 0);
+            // Bottom edge
+            for (let tx = bx1; tx <= bx2; tx++) set(tx, by2 + 1, 'sidewalk/sidewalk_plain', Math.PI);
+            // Left edge
+            for (let ty = by1; ty <= by2; ty++) set(bx1 - 1, ty, 'sidewalk/sidewalk_plain', -Math.PI / 2);
+            // Right edge
+            for (let ty = by1; ty <= by2; ty++) set(bx2 + 1, ty, 'sidewalk/sidewalk_plain', Math.PI / 2);
         }
     }
 
@@ -518,10 +544,10 @@ class World {
                 ctx.fillStyle = TILE_COLORS[tile] || '#333';
                 ctx.fillRect(x * TILE, y * TILE, TILE + 1, TILE + 1);
 
-                // Sidewalk — sprite override (hospital) or default curb detail
+                // Sidewalk — sprite override or default curb detail
                 if (tile === T.SIDEWALK) {
-                    const override = images && this.hospitalSidewalkSprites &&
-                        this.hospitalSidewalkSprites.get(`${x},${y}`);
+                    const override = images && this.sidewalkSprites &&
+                        this.sidewalkSprites.get(`${x},${y}`);
                     if (override) {
                         const img = images[override.key];
                         if (img && img.complete && img.width > 0) {
@@ -638,9 +664,25 @@ class World {
         }
     }
 
-    drawBuildings(ctx, camera) {
+    drawBuildings(ctx, camera, images) {
         for (const b of this.buildings) {
             if (!camera.isVisible(b.x, b.y, b.w, b.h)) continue;
+
+            if (b.isHospital && images && images['hospital'] && images['hospital'].complete) {
+                ctx.drawImage(images['hospital'], b.x, b.y, b.w, b.h);
+                continue;
+            }
+
+            if (b.isPoliceStation && images && images['police_building'] && images['police_building'].complete) {
+                ctx.drawImage(images['police_building'], b.x, b.y, b.w, b.h);
+                continue;
+            }
+
+            if (b.isBank && images && images['bank'] && images['bank'].complete) {
+                ctx.drawImage(images['bank'], b.x, b.y + b.h / 3, b.w * 2 / 3, b.h * 2 / 3);
+                continue;
+            }
+
             // Shadow
             ctx.fillStyle = 'rgba(0,0,0,0.3)';
             ctx.fillRect(b.x + 5, b.y + 5, b.w, b.h);
