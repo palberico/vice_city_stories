@@ -83,11 +83,17 @@ class Game {
             'sidewalk/corner',
             'sidewalk/sidewalk_plain',
             'roads/parking/police_parking',
+            'roads/parking/helipad_closed',
+            'roads/parking/helipad_open',
             'roads/asphalt_blank',
             'roads/asphalt_line',
             'roads/asphalt_stop',
             'roads/asphalt_stop_line',
+            'roads/asphalt_yellow_line',
             'roads/crosswalk',
+            'roads/stoplight',
+            'buildings/gas',
+            'buildings/lawyer',
             'npc_business_man_front', 'npc_business_man_back',
             'npc_business_man_front_walk', 'npc_business_man_back_walk',
             'npc_beach_tourist_front', 'npc_beach_tourist_back',
@@ -121,8 +127,13 @@ class Game {
             'hospital':                    'assets/buildings/hospital.png',
             'police_building':             'assets/buildings/police.png',
             'bank':                        'assets/buildings/bank.png',
-            'roads/parking/police_parking': 'assets/roads/parking/police_parking.png',
+            'roads/parking/police_parking':  'assets/roads/parking/police_parking.png',
+            'roads/parking/helipad_closed':  'assets/roads/parking/helipad_closed.png',
+            'roads/parking/helipad_open':    'assets/roads/parking/helipad_open.png',
             'roads/crosswalk':              'assets/roads/crosswalk.png',
+            'roads/stoplight':              'assets/roads/stoplight.png',
+            'buildings/gas':               'assets/buildings/gas.png',
+            'buildings/lawyer':            'assets/buildings/lawyer.png',
         };
 
         const promises = assetList.map(name => {
@@ -140,7 +151,7 @@ class Game {
                     if (loadingBar) loadingBar.style.width = `${(loaded / assetList.length) * 100}%`;
                     resolve();
                 };
-                const ASSET_V = 68;
+                const ASSET_V = 73;
                 img.src = (customPaths[name] || `assets/${name}.png`) + `?v=${ASSET_V}`;
             });
         });
@@ -292,11 +303,12 @@ class Game {
             }
         }
 
-        // Spawn one playable helicopter
-        const heliSpawn = this.world.spawnPoints[Math.floor(Math.random() * this.world.spawnPoints.length)];
-        if (heliSpawn) {
-            const helicopter = new Vehicle(heliSpawn.x, heliSpawn.y, 'helicopter', this.images);
-            this.vehicles.push(helicopter);
+        // Spawn police helicopter parked on helipad at tile (34,28) — static until stolen or 5 stars
+        {
+            const policeHeli = new Vehicle(34 * TILE + TILE / 2, 28 * TILE + TILE / 2, 'helicopter_police', this.images);
+            policeHeli.ai.active = false;
+            policeHeli.isHelipadParked = true;
+            this.vehicles.push(policeHeli);
         }
 
         // NPCs
@@ -429,6 +441,9 @@ class Game {
         // Update world mouse position
         Input.updateWorldMouse(this.camera);
 
+        // Helipad open/close toggle
+        this.world.updateHelipad(dt);
+
         // Bank robbery check (before player update so E key can be consumed first)
         this.updateBank(dt);
 
@@ -446,7 +461,7 @@ class Game {
             // Wrecks stay in the scene as burnt-out shells — skip update, keep for rendering
             if (v.isWreck) continue;
             // Remove non-wreck destroyed vehicles (non-police cars that just died)
-            if (v.health <= 0 && v.type !== 'helicopter' && !v.isArmoredTarget) {
+            if (v.health <= 0 && v.type !== 'helicopter' && v.type !== 'helicopter_police' && !v.isArmoredTarget) {
                 this.vehicles.splice(i, 1);
                 continue;
             }
@@ -603,7 +618,7 @@ class Game {
         this.camera.follow(this.player, dt);
 
         // Wanted level from traffic accidents — ONLY if police nearby
-        if (this.player.inVehicle && this.player.inVehicle.type !== 'helicopter') {
+        if (this.player.inVehicle && this.player.inVehicle.type !== 'helicopter' && this.player.inVehicle.type !== 'helicopter_police') {
             // Check if any police car is within 500px
             const allPoliceVehicles = [
                 ...this.police.patrolUnits.map(u => u.vehicle),
@@ -653,7 +668,7 @@ class Game {
 
         // AI-driven vehicles stop for pedestrians and signal them to hurry
         for (const v of this.vehicles) {
-            if (v.driver || v.type === 'helicopter' || v.isWreck) continue;
+            if (v.driver || v.type === 'helicopter' || v.type === 'helicopter_police' || v.isWreck) continue;
             if (v.speed <= 0) continue;
             for (const npc of this.npcManager.npcs) {
                 if (!npc.alive) continue;
@@ -697,7 +712,7 @@ class Game {
 
         // Draw ground vehicles (excluding station-parked cars drawn after buildings)
         for (const v of this.vehicles) {
-            if (v.type !== 'helicopter' && !v.isStationParked && this.camera.isVisible(v.x - 40, v.y - 40, 80, 80)) {
+            if (v.type !== 'helicopter' && v.type !== 'helicopter_police' && !v.isStationParked && this.camera.isVisible(v.x - 40, v.y - 40, 80, 80)) {
                 v.draw(ctx);
             }
         }
@@ -723,7 +738,7 @@ class Game {
 
         // Draw air vehicles (on top of buildings)
         for (const v of this.vehicles) {
-            if (v.type === 'helicopter' && this.camera.isVisible(v.x - 40, v.y - 40, 80, 80)) {
+            if ((v.type === 'helicopter' || v.type === 'helicopter_police') && this.camera.isVisible(v.x - 40, v.y - 40, 80, 80)) {
                 v.draw(ctx);
             }
         }
@@ -1052,6 +1067,7 @@ class Game {
         this.sprayCooldown = Math.max(0, this.sprayCooldown - dt);
         const near = this.player.inVehicle &&
             this.player.inVehicle.type !== 'helicopter' &&
+            this.player.inVehicle.type !== 'helicopter_police' &&
             Collision.dist(this.player.x, this.player.y, PAY_SPRAY_PX.x, PAY_SPRAY_PX.y) < 200;
 
         if (near && this.sprayCooldown <= 0) {
@@ -1143,13 +1159,22 @@ class Game {
         this.bankProxCooldown = Math.max(0, this.bankProxCooldown - dt);
         if (!this.player.alive) return;
 
-        const near = Collision.dist(this.player.x, this.player.y, BANK_PX.x, BANK_PX.y) < 80;
-        if (!near) return;
-
         const now = Date.now();
         const cdMs = this.bankLastRobbedAt ? Math.max(0, 3600000 - (now - this.bankLastRobbedAt)) : 0;
+        const inGrace = this.bankLastRobbedAt && (now - this.bankLastRobbedAt) < 60000; // 1 min escape window
 
-        if (cdMs > 0) {
+        // Warning zone: 4x4 tiles starting at (54,26) — alerts before the arrest zone
+        const inWarnZone = this.player.x >= 54 * TILE && this.player.x < 58 * TILE &&
+                           this.player.y >= 26 * TILE && this.player.y < 30 * TILE;
+        if (cdMs > 0 && !inGrace && inWarnZone && this.bankProxCooldown <= 0) {
+            this.hud.notify('⚠ LOCKDOWN ZONE — TURN BACK!');
+            this.bankProxCooldown = 3;
+        }
+
+        const near = Collision.dist(this.player.x, this.player.y, BANK_PX.x, BANK_PX.y) < 100;
+        if (!near) return;
+
+        if (cdMs > 0 && !inGrace) {
             // Player returned during cooldown — arrest on foot
             if (!this.player.inVehicle && this.bankProxCooldown <= 0) {
                 const lost = Math.min(this.player.money, this.bankStolen);
@@ -1356,11 +1381,29 @@ class Game {
 
         // ---- First National Bank ----
         {
-            const bx = BANK_PX.x - 4 * TILE, by = BANK_PX.y - 1.5 * TILE;
+            const bx = BANK_PX.x, by = BANK_PX.y;
             const now = Date.now();
             const cdMs = this.bankLastRobbedAt ? Math.max(0, 3600000 - (now - this.bankLastRobbedAt)) : 0;
-            const isNear = Collision.dist(this.player.x, this.player.y, BANK_PX.x, BANK_PX.y) < 250;
+            const inGrace = this.bankLastRobbedAt && (now - this.bankLastRobbedAt) < 60000;
+            const isNear = Collision.dist(this.player.x, this.player.y, BANK_PX.x, BANK_PX.y) < 100;
             const bankPulse = Math.sin(Date.now() / 500) * 0.2 + 0.8;
+
+            // Warning zone flash — 4x3 tiles at (54,30), shown during active lockdown
+            if (cdMs > 0 && !inGrace) {
+                const warnFlash = Math.sin(Date.now() / 200) * 0.5 + 0.5;
+                ctx.save();
+                ctx.fillStyle = `rgba(220, 0, 0, ${0.25 * warnFlash})`;
+                ctx.fillRect(54 * TILE, 26 * TILE, 4 * TILE, 4 * TILE);
+                ctx.strokeStyle = `rgba(255, 50, 50, ${warnFlash})`;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(54 * TILE, 26 * TILE, 4 * TILE, 4 * TILE);
+                ctx.fillStyle = `rgba(255, 50, 50, ${warnFlash})`;
+                ctx.font = 'bold 11px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('⚠ LOCKDOWN', 56 * TILE, 28 * TILE);
+                ctx.restore();
+            }
 
             ctx.save();
             ctx.textAlign = 'center';
@@ -1368,12 +1411,12 @@ class Game {
             ctx.shadowColor = '#000';
             ctx.shadowBlur = 3;
 
-            // Pulsing box (matches hospital style, yellow)
+            // Pulsing box — exactly the 4 robbery tiles (55-56, 28-29)
             ctx.fillStyle = `rgba(200, 170, 0, ${0.22 * bankPulse})`;
-            ctx.fillRect(bx - 40, by - 40, 80, 80);
+            ctx.fillRect(bx - TILE, by - TILE, 2 * TILE, 2 * TILE);
             ctx.strokeStyle = `rgba(255, 220, 0, ${bankPulse})`;
             ctx.lineWidth = 2;
-            ctx.strokeRect(bx - 40, by - 40, 80, 80);
+            ctx.strokeRect(bx - TILE, by - TILE, 2 * TILE, 2 * TILE);
 
             // Dollar sign icon
             ctx.fillStyle = `rgba(255, 220, 0, ${bankPulse})`;

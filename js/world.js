@@ -34,10 +34,10 @@ const STATION_PATROL_SPOTS = [
     { tx: 29, ty: 33 }, { tx: 30, ty: 33 }, { tx: 31, ty: 33 },
     { tx: 29, ty: 31 }, { tx: 30, ty: 31 }, { tx: 31, ty: 31 },
 ];
-const PAY_SPRAY_PX = { x: 52 * TILE + TILE / 2, y: 55 * TILE + TILE / 2 };
+const PAY_SPRAY_PX = { x: 16.5 * TILE, y: 63 * TILE };
 const HEAL_PX      = { x: 45 * TILE + TILE / 2, y: 49 * TILE + TILE / 2 }; // one tile south of hospital
 const LAWYER_PX    = { x: 62 * TILE + TILE / 2, y: 14 * TILE }; // NE — sidewalk east of v=58 road
-const BANK_PX      = { x: 54 * TILE + TILE / 2, y: 30 * TILE + TILE / 2 }; // NE quadrant — south face of bank building
+const BANK_PX      = { x: 56 * TILE, y: 29 * TILE }; // center of 4-tile robbery zone (SW corner of tile 56,28)
 
 class World {
     constructor() {
@@ -370,11 +370,10 @@ class World {
             });
         }
 
-        // ---- Bank block (NE quadrant, between v=46/v=58 and h=20/h=32) ----
-        // Full 6x6 block for collision/sidewalk; sprite drawn at half-size in SW corner
+        // ---- Bank block — NW corner at tile (57,27), 4x4 ----
         {
-            const BBX = 51, BBW = 6;
-            const BBY = 25, BBH = 6;
+            const BBX = 57, BBW = 4;
+            const BBY = 27, BBH = 4;
             this.buildings = this.buildings.filter(b => {
                 const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
                 const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
@@ -391,6 +390,52 @@ class World {
                 color: '#4a3a20', height: 40,
                 windows: true, roofColor: '#3a2a10',
                 isBank: true
+            });
+        }
+
+        // ---- Lawyer building — NW corner at tile (71,13), 4x4 ----
+        {
+            const LBX = 71, LBW = 4;
+            const LBY = 13, LBH = 4;
+            this.buildings = this.buildings.filter(b => {
+                const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
+                const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
+                return !(br >= LBX && bl < LBX + LBW && bb >= LBY && bt < LBY + LBH);
+            });
+            for (let ty = LBY; ty < LBY + LBH; ty++) {
+                for (let tx = LBX; tx < LBX + LBW; tx++) {
+                    this.tiles[ty][tx] = T.BUILDING;
+                }
+            }
+            this.buildings.push({
+                x: LBX * TILE, y: LBY * TILE,
+                w: LBW * TILE, h: LBH * TILE,
+                color: '#2a3a4a', height: 40,
+                windows: true, roofColor: '#1a2a3a',
+                isLawyer: true
+            });
+        }
+
+        // ---- Pay & Spray gas station — SW corner at tile (15,62), 4x4 ----
+        {
+            const GBX = 15, GBW = 4;
+            const GBY = 59, GBH = 4;
+            this.buildings = this.buildings.filter(b => {
+                const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
+                const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
+                return !(br >= GBX && bl < GBX + GBW && bb >= GBY && bt < GBY + GBH);
+            });
+            for (let ty = GBY; ty < GBY + GBH; ty++) {
+                for (let tx = GBX; tx < GBX + GBW; tx++) {
+                    this.tiles[ty][tx] = T.BUILDING;
+                }
+            }
+            this.buildings.push({
+                x: GBX * TILE, y: GBY * TILE,
+                w: GBW * TILE, h: GBH * TILE,
+                color: '#cc6600', height: 20,
+                windows: false, roofColor: '#aa4400',
+                isPaySpray: true
             });
         }
 
@@ -465,7 +510,7 @@ class World {
             ['28,37', 'roads/crosswalk'],
             ['28,38', 'roads/crosswalk'],
             ['28,39', 'roads/crosswalk'],
-            ['29,36', { key: 'roads/asphalt_stop_line', rot: Math.PI / 2 }],
+            ['29,36', { key: 'roads/asphalt_stop', rot: Math.PI / 2 }],
             ['29,37', { key: 'roads/asphalt_stop_line', rot: Math.PI / 2 }],
             ['30,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
             ['31,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
@@ -474,6 +519,37 @@ class World {
             ['34,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
             ['35,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
             ['36,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
+            // Crosswalk on east side of police block (x=37, south road y=36-39)
+            ['37,36', 'roads/crosswalk'],
+            ['37,37', 'roads/crosswalk'],
+            ['37,38', 'roads/crosswalk'],
+            ['37,39', 'roads/crosswalk'],
+            // Road line sprites — south edge of road (y=39), facing north
+            ['29,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
+            ['30,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
+            ['31,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
+            ['32,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
+            ['33,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
+            ['34,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
+            ['35,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
+            ['36,38', { key: 'roads/asphalt_stop_line', rot: -Math.PI / 2 }],
+            ['36,39', { key: 'roads/asphalt_stop', rot: -Math.PI / 2 }],
+            // Yellow centre lines — row 37 (CCW) and row 38 (CW)
+            ['30,37', { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 }],
+            ['31,37', { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 }],
+            ['32,37', { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 }],
+            ['33,37', { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 }],
+            ['34,37', { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 }],
+            ['35,37', { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 }],
+            ['30,38', { key: 'roads/asphalt_yellow_line', rot: Math.PI / 2 }],
+            ['31,38', { key: 'roads/asphalt_yellow_line', rot: Math.PI / 2 }],
+            ['32,38', { key: 'roads/asphalt_yellow_line', rot: Math.PI / 2 }],
+            ['33,38', { key: 'roads/asphalt_yellow_line', rot: Math.PI / 2 }],
+            ['34,38', { key: 'roads/asphalt_yellow_line', rot: Math.PI / 2 }],
+            ['35,38', { key: 'roads/asphalt_yellow_line', rot: Math.PI / 2 }],
+            // Asphalt blank fill
+            ['29,38', 'roads/asphalt_blank'],
+            ['36,37', 'roads/asphalt_blank'],
         ]);
 
         // Fill rest of police block (x=29-36, y=27-34) with asphalt where not building or parking
@@ -485,6 +561,23 @@ class World {
                 }
             }
         }
+
+        // Helipad building collision — starts CLOSED, all 9 tiles blocked
+        for (let ty = 27; ty <= 29; ty++) {
+            for (let tx = 33; tx <= 35; tx++) {
+                this.tiles[ty][tx] = T.BUILDING;
+            }
+        }
+
+        // Helipad open/close state (toggles every 3 minutes)
+        this.helipadOpen = false;
+        this.helipadTimer = 0;
+
+        // Multi-tile sprites — drawn as a single image spanning multiple tiles
+        // SW corner at (33,29) → NW corner at (33,27), 3×3 tiles
+        this.multiTileSprites = [
+            { tx: 33, ty: 27, tw: 3, th: 3, key: 'roads/parking/helipad_closed' },
+        ];
     }
 
     _buildSidewalkSprites() {
@@ -698,6 +791,16 @@ class World {
             }
         }
 
+        // Multi-tile sprites (drawn after per-tile loop so they sit on top)
+        if (images && this.multiTileSprites) {
+            for (const s of this.multiTileSprites) {
+                const img = images[s.key];
+                if (!img || !img.complete || !img.width) continue;
+                if (!camera.isVisible(s.tx * TILE, s.ty * TILE, s.tw * TILE, s.th * TILE)) continue;
+                ctx.drawImage(img, s.tx * TILE, s.ty * TILE, s.tw * TILE, s.th * TILE);
+            }
+        }
+
         // DEV: tile coordinate grid (always on — remove when done)
         {
             const LABEL_EVERY = 2;
@@ -733,7 +836,21 @@ class World {
             }
 
             if (b.isBank && images && images['bank'] && images['bank'].complete) {
-                ctx.drawImage(images['bank'], b.x, b.y + b.h / 3, b.w * 2 / 3, b.h * 2 / 3);
+                ctx.drawImage(images['bank'], b.x, b.y, b.w, b.h);
+                continue;
+            }
+
+            if (b.isPaySpray && images && images['buildings/gas'] && images['buildings/gas'].complete) {
+                ctx.drawImage(images['buildings/gas'], b.x, b.y, b.w, b.h);
+                continue;
+            }
+
+            if (b.isLawyer && images && images['buildings/lawyer'] && images['buildings/lawyer'].complete) {
+                ctx.save();
+                ctx.translate(b.x + b.w / 2, b.y + b.h / 2);
+                ctx.rotate(Math.PI / 2);
+                ctx.drawImage(images['buildings/lawyer'], -b.w / 2, -b.h / 2, b.w, b.h);
+                ctx.restore();
                 continue;
             }
 
@@ -751,6 +868,27 @@ class World {
             ctx.fillStyle = b.roofColor;
             ctx.fillRect(b.x + 4, b.y + 4, b.w - 8, 6);
             // Windows
+        }
+    }
+
+    updateHelipad(dt) {
+        this.helipadTimer += dt;
+        if (this.helipadTimer >= 180) { // 3 minutes
+            this.helipadTimer = 0;
+            this.helipadOpen = !this.helipadOpen;
+            const key = this.helipadOpen ? 'roads/parking/helipad_open' : 'roads/parking/helipad_closed';
+            this.multiTileSprites[0] = { tx: 33, ty: 27, tw: 3, th: 3, key };
+            // Open: unlock entry tile (34,27) and boarding tile (34,28)
+            // Closed: re-block all 9 tiles
+            for (let ty = 27; ty <= 29; ty++) {
+                for (let tx = 33; tx <= 35; tx++) {
+                    if (this.helipadOpen && tx === 34 && (ty === 27 || ty === 28)) {
+                        this.tiles[ty][tx] = T.ROAD; // walkable when open
+                    } else {
+                        this.tiles[ty][tx] = T.BUILDING;
+                    }
+                }
+            }
         }
     }
 

@@ -182,6 +182,24 @@ class Minimap {
             ctx.fillText('S', mx, my);
         }
 
+        // Police helicopter blip — only shown when parked on helipad (not stolen/active)
+        if (vehicles) {
+            const heliV = vehicles.find(v => v.type === 'helicopter_police' && v.isHelipadParked && !v.driver);
+            if (heliV) {
+                const hx = offsetX + heliV.x * this.scale * mapScale;
+                const hy = offsetY + heliV.y * this.scale * mapScale;
+                ctx.fillStyle = '#4466ff';
+                ctx.beginPath();
+                ctx.arc(hx, hy, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 5px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('H', hx, hy);
+            }
+        }
+
         // Player blip
         ctx.fillStyle = '#00ff00';
         ctx.beginPath();

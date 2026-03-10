@@ -233,29 +233,32 @@ class PoliceSystem {
         }
     }
 
-    // ---- Spawn one patrol car into the first unoccupied parking spot ----
+    // ---- Spawn one patrol car into the first unassigned parking spot ----
     _spawnPatrolUnit(vehicles, images) {
-        // Find first designated spot with no vehicle already on it
-        const spot = STATION_PATROL_SPOTS.find(s => {
-            const cx = s.tx * TILE + TILE / 2;
-            const cy = s.ty * TILE;
-            return !vehicles.some(v => Math.abs(v.x - cx) < TILE * 0.6 && Math.abs(v.y - cy) < TILE * 0.6);
-        });
+        // Find first spot not already owned by an active patrol unit
+        const spot = STATION_PATROL_SPOTS.find(s =>
+            !this.patrolUnits.some(u => u.alive && u.spotTx === s.tx && u.spotTy === s.ty)
+        );
         if (!spot) return; // all spots occupied
 
         const spawnX = spot.tx * TILE + TILE / 2;
         const spawnY = spot.ty * TILE;
         const vehicle = new Vehicle(spawnX, spawnY, 'police', images);
-        vehicle.angle = 0; // facing south (sprite drawn at angle + spriteRot; police spriteRot = PI/2, so 0 + PI/2 = south)
+        vehicle.angle = Math.PI / 2; // south-facing while parked
+        vehicle.ai.active = false;
         vehicle.isPolicePatrol = true;
-        vehicle.ai.active = true;
-        vehicle.ai.targetSpeed = 60 + Math.random() * 40;
         vehicles.push(vehicle);
 
         const unit = new PoliceUnit(spawnX, spawnY, vehicle);
-        unit.patrolling = true;
-        unit.returning = false;
+        unit.patrolling = false;
+        unit.patrolPhase = 'parked'; // parked (60s) → exiting → patrolling → returning → entering → despawn
+        unit.parkedTimer = 0;
         unit.patrolTimer = 0;
+        unit.returnTimer = 0;
+        unit.parkingX = spawnX;
+        unit.parkingY = spawnY;
+        unit.spotTx = spot.tx;
+        unit.spotTy = spot.ty;
         this.patrolUnits.push(unit);
     }
 
@@ -264,7 +267,7 @@ class PoliceSystem {
         if (!this.initialized) {
             this.initialized = true;
             this.deployTimer = 0; // first one spawns immediately
-            this.helicopter = new PoliceHelicopter(images);
+            this.helicopter = null; // helicopter is now a Vehicle on the helipad
         }
 
         // ---- Patrol unit management ----
@@ -296,18 +299,19 @@ class PoliceSystem {
         for (const unit of this.patrolUnits) {
             if (!unit.alive || !unit.vehicle || unit.vehicle.health <= 0) continue;
 
+            const v = unit.vehicle;
             const distToPlayer = Collision.dist(unit.x, unit.y, player.x, player.y);
 
-            if (player.wantedLevel >= 1 && distToPlayer < 800) {
-                // Chase the player
+            // Wanted: chase player (not while inside station driveway)
+            if (player.wantedLevel >= 1 && distToPlayer < 800 &&
+                unit.patrolPhase !== 'exiting' && unit.patrolPhase !== 'entering') {
+                unit.patrolPhase = 'chasing';
                 unit.patrolling = false;
-                unit.returning = false;
-                unit.vehicle.ai.active = false;
+                v.ai.active = false;
                 this._driveToward(unit, player.x, player.y, 0.8, world, dt);
-                unit.x = unit.vehicle.x;
-                unit.y = unit.vehicle.y;
+                unit.x = v.x;
+                unit.y = v.y;
 
-                // Shoot
                 if (distToPlayer < 400 && distToPlayer > 50) {
                     unit.shootTimer -= dt;
                     if (unit.shootTimer <= 0) {
@@ -319,38 +323,94 @@ class PoliceSystem {
                         unit.shootTimer = 0.8 - player.wantedLevel * 0.05;
                     }
                 }
-
                 if (distToPlayer < 50 && player.inVehicle) {
                     player.inVehicle.health -= dt * 15;
-                    unit.vehicle.speed *= 0.5;
+                    v.speed *= 0.5;
                 }
-            } else if (unit.returning) {
-                // Head back to station
-                unit.vehicle.ai.active = false;
-                this._driveToward(unit, STATION_PARKING_PX.x, STATION_PARKING_PX.y, 0.6, world, dt);
-                unit.x = unit.vehicle.x;
-                unit.y = unit.vehicle.y;
+                continue;
+            }
 
-                // Arrived at station — retire this unit
-                if (Collision.dist(unit.x, unit.y, STATION_PARKING_PX.x, STATION_PARKING_PX.y) < 180) {
-                    // Remove vehicle from world
-                    const idx = vehicles.indexOf(unit.vehicle);
+            // Chase → returning when wanted clears
+            if (unit.patrolPhase === 'chasing' && player.wantedLevel <= 0) {
+                unit.patrolPhase = 'returning';
+                unit.returnTimer = 0;
+                v.ai.active = false;
+            }
+
+            if (unit.patrolPhase === 'parked') {
+                // Sit in parking spot for 60 seconds before departing
+                unit.parkedTimer += dt;
+                if (unit.parkedTimer >= 60) {
+                    unit.patrolPhase = 'exiting';
+                }
+
+            } else if (unit.patrolPhase === 'exiting') {
+                // Drive south manually out of parking area onto the main road
+                v.angle = Math.PI / 2;
+                v.speed = 90;
+                unit.x = v.x;
+                unit.y = v.y;
+                if (v.y > 36 * TILE + TILE) {
+                    unit.patrolPhase = 'patrolling';
+                    unit.patrolTimer = 0;
+                    v.ai.active = true;
+                    v.ai.targetSpeed = 60 + Math.random() * 40;
+                }
+
+            } else if (unit.patrolPhase === 'patrolling') {
+                unit.patrolling = true;
+                v.ai.active = true;
+                v.ai.targetSpeed = 60 + Math.random() * 0.1;
+                unit.patrolTimer += dt;
+                unit.x = v.x;
+                unit.y = v.y;
+                if (unit.patrolTimer > 90 && player.wantedLevel <= 0) {
+                    unit.patrolPhase = 'returning';
+                    unit.patrolling = false;
+                    unit.returnTimer = 0;
+                }
+
+            } else if (unit.patrolPhase === 'returning') {
+                unit.returnTimer += dt;
+                // Target: north road entry to station driveway (x=31, on h=22 road)
+                const entryX = 31 * TILE + TILE / 2;
+                const entryY = 22 * TILE + TILE / 2;
+
+                // Use road AI for 2 minutes so the car follows roads back naturally
+                if (unit.returnTimer < 120) {
+                    v.ai.active = true;
+                } else {
+                    // Timeout fallback: drive to north road entry
+                    v.ai.active = false;
+                    this._driveToward(unit, entryX, entryY, 0.6, world, dt);
+                }
+                unit.x = v.x;
+                unit.y = v.y;
+
+                // Trigger entry when car reaches north road near station driveway
+                const onNorthRoad = v.y >= 22 * TILE && v.y <= 27 * TILE;
+                const nearEntryX = Math.abs(v.x - entryX) < TILE * 2;
+                if (onNorthRoad && nearEntryX) {
+                    unit.patrolPhase = 'entering';
+                    v.ai.active = false;
+                    v.x = entryX; // snap to driveway column
+                    v.angle = Math.PI / 2;
+                    v.speed = 0;
+                }
+
+            } else if (unit.patrolPhase === 'entering') {
+                // Drive south down the driveway and despawn at tile (31,29)
+                v.x = 31 * TILE + TILE / 2; // keep centered in driveway
+                v.angle = Math.PI / 2;
+                v.speed = 80;
+                unit.x = v.x;
+                unit.y = v.y;
+                if (v.y >= 29 * TILE) {
+                    v.speed = 0;
+                    const idx = vehicles.indexOf(v);
                     if (idx >= 0) vehicles.splice(idx, 1);
                     unit.alive = false;
-                    // deployTimer controls when next unit goes out (10s gap)
                     if (this.deployTimer < 10) this.deployTimer = 10;
-                }
-            } else {
-                // Normal patrol — AI drives around
-                unit.patrolling = true;
-                unit.vehicle.ai.active = true;
-                unit.vehicle.ai.targetSpeed = 60 + Math.random() * 0.1;
-                unit.patrolTimer += dt;
-
-                // After 90s, return to station (unless wanted)
-                if (unit.patrolTimer > 90 && player.wantedLevel <= 0) {
-                    unit.returning = true;
-                    unit.vehicle.ai.active = false;
                 }
             }
         }
@@ -379,20 +439,12 @@ class PoliceSystem {
                 this.sirenTimer = 2;
             }
 
-            if (player.wantedLevel >= 5 && this.helicopter) {
-                if (!this.helicopter.alive) {
-                    // Respawn on roof after being destroyed
-                    this.helicopter = new PoliceHelicopter(images);
-                }
-                this.helicopter.active = true;
-            }
-
-            if (this.helicopter && this.helicopter.alive) {
-                this.helicopter.update(dt, player, audio, particles);
-                this.heliSoundTimer -= dt;
-                if (this.heliSoundTimer <= 0) {
-                    audio.playHeliSound();
-                    this.heliSoundTimer = 0.3;
+            // 5-star: activate the parked police helicopter Vehicle to chase the player
+            if (player.wantedLevel >= 5) {
+                const heliV = vehicles.find(v => v.type === 'helicopter_police' && !v.driver);
+                if (heliV && heliV.isHelipadParked) {
+                    heliV.isHelipadParked = false;
+                    heliV.ai.active = true;
                 }
             }
 
@@ -499,7 +551,9 @@ class PoliceSystem {
                 ctx.restore();
                 continue;
             }
-            if (!unit.vehicle || unit.patrolling) continue;
+            if (!unit.vehicle) continue;
+            // Patrol units: only show siren glow when chasing; chase units always show it
+            if (unit.patrolPhase && unit.patrolPhase !== 'chasing') continue;
             const t = Date.now() / 200;
             ctx.save();
             ctx.translate(unit.vehicle.x, unit.vehicle.y);
@@ -510,8 +564,6 @@ class PoliceSystem {
             ctx.restore();
         }
 
-        if (this.helicopter) {
-            this.helicopter.draw(ctx);
-        }
+        // helicopter is now a Vehicle in the vehicles array — drawn by engine.js
     }
 }

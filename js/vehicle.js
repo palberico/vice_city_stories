@@ -30,6 +30,7 @@ const VEHICLE_TYPES = {
     police: { name: 'Police', topSpeed: 349, accel: 260, handling: 2.8, braking: 340, w: 30, h: 55, color: '#222244', img: 'car_police', spriteRot: Math.PI / 2 },
     motorcycle: { name: 'PCJ-600', topSpeed: 480, accel: 320, handling: 4.0, braking: 250, w: 14, h: 30, color: '#333333', img: 'motorcycle', spriteRot: Math.PI / 2 },
     helicopter: { name: 'Maverick', topSpeed: 349, accel: 150, handling: 1.5, braking: 100, w: 40, h: 40, color: '#990000', img: 'helicopter', spriteRot: Math.PI / 2 },
+    helicopter_police: { name: 'Police Maverick', topSpeed: 349, accel: 150, handling: 1.5, braking: 100, w: 40, h: 40, color: '#112244', img: 'helicopter_police', spriteRot: Math.PI / 2 },
     armored: { name: 'Securicar', topSpeed: 120, accel: 80, handling: 1.0, braking: 150, w: 32, h: 58, color: '#cccccc', img: 'armored_car', spriteRot: Math.PI / 2 }
 };
 
@@ -77,7 +78,7 @@ class Vehicle {
     update(dt, world, input, isPlayerDriving, player, allVehicles) {
         if (isPlayerDriving && this.driver) {
             // ---- PLAYER DRIVING ----
-            if (this.type === 'helicopter') {
+            if (this.type === 'helicopter' || this.type === 'helicopter_police') {
                 // ---- HELICOPTER CONTROLS ----
                 // W/S: thrust forward/backward along facing direction
                 if (input.isDown('w') || input.isDown('arrowup')) {
@@ -121,7 +122,7 @@ class Vehicle {
             }
 
             // Vehicle-vehicle collision when player is driving (ground only)
-            if (this.type !== 'helicopter' && allVehicles) {
+            if (this.type !== 'helicopter' && this.type !== 'helicopter_police' && allVehicles) {
                 for (const other of allVehicles) {
                     if (other === this) continue;
                     if (this.checkVehicleCollision(other)) {
@@ -138,14 +139,14 @@ class Vehicle {
         }
 
         // Helicopter altitude animation — smoothly lift off when driver enters, land when they exit
-        if (this.type === 'helicopter') {
+        if (this.type === 'helicopter' || this.type === 'helicopter_police') {
             const targetLift = this.driver ? 1.0 : 0.0;
             const liftSpeed = 1.2; // full transition in ~0.8 seconds
             this.liftScale += (targetLift - this.liftScale) * Math.min(1, liftSpeed * dt);
         }
 
         // Apply movement
-        if (this.type === 'helicopter') {
+        if (this.type === 'helicopter' || this.type === 'helicopter_police') {
             // Helicopters ignore water and buildings
             if (this.driver || Math.abs(this.speed) > 1) {
                 this.x += Math.cos(this.angle) * this.speed * dt;
@@ -222,7 +223,7 @@ class Vehicle {
     }
 
     checkVehicleCollision(other) {
-        if (this.type === 'helicopter' || other.type === 'helicopter') return false;
+        if (this.type === 'helicopter' || this.type === 'helicopter_police' || other.type === 'helicopter' || other.type === 'helicopter_police') return false;
         const dx = this.x - other.x;
         const dy = this.y - other.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -558,7 +559,7 @@ class Vehicle {
         // Use per-type rotation offset so each sprite faces the right way
         ctx.rotate(this.angle + this.spriteRot);
 
-        if (this.type === 'helicopter') {
+        if (this.type === 'helicopter' || this.type === 'helicopter_police') {
             const lift = this.liftScale;
             const bodyScale = 1.0 + lift * 0.38;
 
@@ -583,8 +584,9 @@ class Vehicle {
                 // The rotor hub in the sprite is at ~30% from top, not the geometric
                 // center (50%).  Shift the body down so the hub sits at (0,0) — the
                 // same point the propeller rotates around.
-                const drawW = 80;
-                const drawH = this.img.height * (drawW / this.img.width);
+                const scale = Math.max(this.w / this.img.width, this.h / this.img.height) * 1.8;
+                const drawW = this.img.width * scale;
+                const drawH = this.img.height * scale;
                 ctx.drawImage(this.img, -drawW / 2, -drawH / 2, drawW, drawH);
             } else {
                 // Fallback procedural body — front at top (negative Y) to match spriteRot=PI/2
@@ -633,6 +635,31 @@ class Vehicle {
                 ctx.fill();
             }
             ctx.restore();
+
+            // Siren lights when player is flying
+            if (this.driver) {
+                const flash = Math.floor(Date.now() / 250) % 2 === 0;
+                const leftColor  = flash ? '#0044ff' : '#ff2200';
+                const rightColor = flash ? '#ff2200' : '#0044ff';
+                ctx.save();
+                ctx.globalAlpha = 0.85;
+                // Left light
+                ctx.fillStyle = leftColor;
+                ctx.shadowColor = leftColor;
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(-10, -8, 4, 0, Math.PI * 2);
+                ctx.fill();
+                // Right light
+                ctx.fillStyle = rightColor;
+                ctx.shadowColor = rightColor;
+                ctx.beginPath();
+                ctx.arc(10, -8, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1;
+                ctx.restore();
+            }
 
             ctx.restore(); // end body scale
 
