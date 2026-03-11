@@ -178,16 +178,22 @@ class HUD {
         // ---- Minimap ----
         this.minimap.draw(ctx, H, player, world, vehicles, missions, police, stores);
 
-        // ---- Death Screen ----
+        // ---- Death / Arrest Screen ----
         if (!player.alive) {
             ctx.fillStyle = 'rgba(180,0,0,0.5)';
             ctx.fillRect(0, 0, W, H);
             ctx.fillStyle = '#fff';
             ctx.font = 'bold 48px "Segoe UI", Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('WASTED', W / 2, H / 2);
-            ctx.font = '18px "Segoe UI", Arial';
-            ctx.fillText(`Respawning... -$100`, W / 2, H / 2 + 40);
+            if (player.arrested) {
+                ctx.fillText('ARRESTED', W / 2, H / 2);
+                ctx.font = '18px "Segoe UI", Arial';
+                ctx.fillText(`$${player.arrestedLost.toLocaleString()} confiscated — releasing at station...`, W / 2, H / 2 + 40);
+            } else {
+                ctx.fillText('WASTED', W / 2, H / 2);
+                ctx.font = '18px "Segoe UI", Arial';
+                ctx.fillText(`Respawning... -$100`, W / 2, H / 2 + 40);
+            }
         }
     }
 }

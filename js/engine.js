@@ -10,6 +10,7 @@ class Game {
         this.images = {};
         this.dayNight = { time: 8, speed: 0.02 }; // starts at 8:00 AM, 0.02 hours/sec (~20 min per full cycle)
         this.menuReady = false;
+        this.showGrid = true;
 
         // Systems
         this.camera = null;
@@ -93,7 +94,13 @@ class Game {
             'roads/crosswalk',
             'roads/stoplight',
             'buildings/gas',
+            'buildings/parkinglot',
             'buildings/lawyer',
+            'buildings/building1',
+            'buildings/building2',
+            'landscape/grass',
+            'landscape/grass_fence1',
+            'landscape/grass_fence2',
             'npc_business_man_front', 'npc_business_man_back',
             'npc_business_man_front_walk', 'npc_business_man_back_walk',
             'npc_beach_tourist_front', 'npc_beach_tourist_back',
@@ -133,7 +140,10 @@ class Game {
             'roads/crosswalk':              'assets/roads/crosswalk.png',
             'roads/stoplight':              'assets/roads/stoplight.png',
             'buildings/gas':               'assets/buildings/gas.png',
+            'buildings/parkinglot':        'assets/buildings/parkinglot.png',
             'buildings/lawyer':            'assets/buildings/lawyer.png',
+            'buildings/building1':         'assets/buildings/building1.png',
+            'buildings/building2':         'assets/buildings/building2.png',
         };
 
         const promises = assetList.map(name => {
@@ -311,6 +321,25 @@ class Game {
             this.vehicles.push(policeHeli);
         }
 
+        // Parking lot cars — static, stay until player takes them
+        {
+            const redSports = new Vehicle(76.6 * TILE, 18.5 * TILE, 'sports', this.images);
+            redSports.img = this.images['car_sports_red'];
+            redSports.angle = Math.PI / 2; // facing south
+            redSports.ai.active = false;
+            redSports.speed = 0;
+            redSports.isParkingLotCar = true;
+            this.vehicles.push(redSports);
+
+            const whiteSed = new Vehicle(77.3 * TILE, 18.5 * TILE, 'sedan', this.images);
+            whiteSed.img = this.images['car_sedan_white'];
+            whiteSed.angle = Math.PI / 2; // facing south
+            whiteSed.ai.active = false;
+            whiteSed.speed = 0;
+            whiteSed.isParkingLotCar = true;
+            this.vehicles.push(whiteSed);
+        }
+
         // NPCs
         const npcCharacters = ['business_man', 'beach_tourist', 'casual', 'jogger'].map(name => ({
             front: this.images[`npc_${name}_front`],
@@ -319,6 +348,11 @@ class Game {
             backWalk: this.images[`npc_${name}_back_walk`],
         }));
         this.npcManager = new NPCManager(this.world, 150, npcCharacters);
+
+        // Static world pickups — collected silently on contact, no marker
+        this.worldPickups = [
+            { x: 79.5 * TILE, y: 17.5 * TILE, weapon: 'rpg', ammo: 3 }, // hidden in dumpster
+        ];
 
         // Police
         this.police = new PoliceSystem();
@@ -412,6 +446,12 @@ class Game {
             return;
         }
 
+        // Toggle DEV grid
+        if (Input.isDown('g')) {
+            Input.keys['g'] = false;
+            this.showGrid = !this.showGrid;
+        }
+
         // Phone
         if (Input.isDown('tab')) {
             Input.keys['tab'] = false;
@@ -464,6 +504,24 @@ class Game {
             if (v.health <= 0 && v.type !== 'helicopter' && v.type !== 'helicopter_police' && !v.isArmoredTarget) {
                 this.vehicles.splice(i, 1);
                 continue;
+            }
+
+            // Abandoned player car: despawn after 5 minutes and respawn elsewhere
+            if (v.wasPlayerDriven && !v.driver && !v.isParkingLotCar) {
+                v.abandonedTimer = (v.abandonedTimer || 0) + dt;
+                if (v.abandonedTimer >= 300) {
+                    this.vehicles.splice(i, 1);
+                    const spawns = this.world.vehicleSpawns;
+                    const spawn = spawns[Math.floor(Math.random() * spawns.length)];
+                    const types = ['sedan', 'sports', 'motorcycle'];
+                    const type = types[Math.floor(Math.random() * types.length)];
+                    const nv = new Vehicle(spawn.x, spawn.y, type, this.images);
+                    nv.angle = spawn.angle;
+                    nv.ai.active = true;
+                    nv.ai.targetSpeed = 100 + Math.random() * 150;
+                    this.vehicles.push(nv);
+                    continue;
+                }
             }
 
             v.update(dt, this.world, Input, v.driver === this.player, this.player, this.vehicles);
@@ -559,6 +617,17 @@ class Game {
                         break;
                     }
                 }
+            }
+        }
+
+        // Collect static world pickups
+        for (let i = this.worldPickups.length - 1; i >= 0; i--) {
+            const p = this.worldPickups[i];
+            if (Collision.dist(this.player.x, this.player.y, p.x, p.y) < 32) {
+                this.player.weapons.pickupWeapon(p.weapon, p.ammo);
+                this.hud.notify(`Found ${WEAPONS[p.weapon].name}! (${p.ammo} rounds)`);
+                this.audio.playPickup();
+                this.worldPickups.splice(i, 1);
             }
         }
 
@@ -699,7 +768,7 @@ class Game {
         this.camera.applyTransform(ctx);
 
         // Draw world tiles
-        this.world.draw(ctx, this.camera, this.images);
+        this.world.draw(ctx, this.camera, this.images, this.showGrid);
 
         // Draw traffic light signals
         this.trafficLights.draw(ctx, this.camera, this.world.ROAD_WIDTH);
@@ -709,6 +778,9 @@ class Game {
 
         // Draw store markers
         this.drawStoreMarkers(ctx);
+
+        // Draw ground-level overlays (parking lots etc.) before entities
+        this.world.drawGroundOverlays(ctx, this.camera, this.images);
 
         // Draw ground vehicles (excluding station-parked cars drawn after buildings)
         for (const v of this.vehicles) {
@@ -1136,7 +1208,8 @@ class Game {
     updateLawyer(dt) {
         this.lawyerCooldown = Math.max(0, this.lawyerCooldown - dt);
         if (this.player.inVehicle || !this.player.alive) return;
-        const near = Collision.dist(this.player.x, this.player.y, LAWYER_PX.x, LAWYER_PX.y) < 60;
+        const lzX = 71 * TILE, lzY = 21 * TILE; // NW corner of activation zone
+        const near = this.player.x >= lzX && this.player.x <= lzX + 80 && this.player.y >= lzY && this.player.y <= lzY + 80;
         if (!near || this.lawyerCooldown > 0) return;
         if (Input.isDown('l')) {
             Input.keys['l'] = false;
@@ -1175,19 +1248,18 @@ class Game {
         if (!near) return;
 
         if (cdMs > 0 && !inGrace) {
-            // Player returned during cooldown — arrest on foot
+            // Player entered lockdown zone — arrest
             if (!this.player.inVehicle && this.bankProxCooldown <= 0) {
                 const lost = Math.min(this.player.money, this.bankStolen);
-                this.player.money = Math.max(0, this.player.money - this.bankStolen);
-                this.player.x = STATION_PX.x;
-                this.player.y = STATION_PX.y + 2 * TILE;
-                this.camera.x = this.player.x;
-                this.camera.y = this.player.y;
+                this.player.money = Math.max(0, this.player.money - lost);
                 this.player.wantedLevel = 0;
                 this.player.wantedDecayTimer = 0;
                 this.storeOpen = false;
                 this.sprayOpen = false;
-                this.hud.notify(`ARRESTED! $${lost.toLocaleString()} confiscated — released at station`);
+                this.player.arrested = true;
+                this.player.arrestedLost = lost;
+                this.player.alive = false;
+                this.player.respawnTimer = 3;
                 this.audio.playPickup();
                 this.bankProxCooldown = 4;
             }
@@ -1311,25 +1383,25 @@ class Game {
     }
 
     _drawSpecialLocations(ctx) {
-        // ---- Lawyer's Office (NE) ----
-        const lx = LAWYER_PX.x, ly = LAWYER_PX.y;
+        // ---- Lawyer's Office ----
+        const lzX = 71 * TILE, lzY = 21 * TILE; // NW corner of zone
         const lawPulse = Math.sin(Date.now() / 700) * 0.2 + 0.8;
         ctx.save();
         ctx.fillStyle = `rgba(100, 50, 200, ${0.25 * lawPulse})`;
-        ctx.fillRect(lx - 40, ly - 40, 80, 80);
+        ctx.fillRect(lzX, lzY, 80, 80);
         ctx.strokeStyle = `rgba(160, 100, 255, ${lawPulse})`;
         ctx.lineWidth = 2;
-        ctx.strokeRect(lx - 40, ly - 40, 80, 80);
+        ctx.strokeRect(lzX, lzY, 80, 80);
         ctx.fillStyle = '#bb88ff';
         ctx.font = 'bold 11px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.shadowColor = '#000';
         ctx.shadowBlur = 3;
-        ctx.fillText('LAWYER', lx, ly - 8);
+        ctx.fillText('LAWYER', lzX + 40, lzY + 32);
         ctx.fillStyle = '#ddbbff';
         ctx.font = '10px Arial';
-        ctx.fillText('Drop ★  $200  [L]', lx, ly + 8);
+        ctx.fillText('Drop ★  $200  [L]', lzX + 40, lzY + 48);
         ctx.textBaseline = 'alphabetic';
         ctx.restore();
 
@@ -1393,15 +1465,15 @@ class Game {
                 const warnFlash = Math.sin(Date.now() / 200) * 0.5 + 0.5;
                 ctx.save();
                 ctx.fillStyle = `rgba(220, 0, 0, ${0.25 * warnFlash})`;
-                ctx.fillRect(54 * TILE, 26 * TILE, 4 * TILE, 4 * TILE);
+                ctx.fillRect(54 * TILE, 27 * TILE, 4 * TILE, 4 * TILE);
                 ctx.strokeStyle = `rgba(255, 50, 50, ${warnFlash})`;
                 ctx.lineWidth = 2;
-                ctx.strokeRect(54 * TILE, 26 * TILE, 4 * TILE, 4 * TILE);
+                ctx.strokeRect(54 * TILE, 27 * TILE, 4 * TILE, 4 * TILE);
                 ctx.fillStyle = `rgba(255, 50, 50, ${warnFlash})`;
                 ctx.font = 'bold 11px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText('⚠ LOCKDOWN', 56 * TILE, 28 * TILE);
+                ctx.fillText('⚠ LOCKDOWN', 56 * TILE, 29 * TILE);
                 ctx.restore();
             }
 

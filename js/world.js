@@ -36,7 +36,7 @@ const STATION_PATROL_SPOTS = [
 ];
 const PAY_SPRAY_PX = { x: 16.5 * TILE, y: 63 * TILE };
 const HEAL_PX      = { x: 45 * TILE + TILE / 2, y: 49 * TILE + TILE / 2 }; // one tile south of hospital
-const LAWYER_PX    = { x: 62 * TILE + TILE / 2, y: 14 * TILE }; // NE — sidewalk east of v=58 road
+const LAWYER_PX    = { x: 73 * TILE + TILE / 2, y: 19 * TILE }; // center of 5x4 lawyer building
 const BANK_PX      = { x: 56 * TILE, y: 29 * TILE }; // center of 4-tile robbery zone (SW corner of tile 56,28)
 
 class World {
@@ -393,10 +393,56 @@ class World {
             });
         }
 
-        // ---- Lawyer building — NW corner at tile (71,13), 4x4 ----
+        // ---- Building2 — SW corner at tile (77,16), 3x4 ----
         {
-            const LBX = 71, LBW = 4;
-            const LBY = 13, LBH = 4;
+            const B2X = 77, B2W = 3;
+            const B2Y = 13, B2H = 4;
+            this.buildings = this.buildings.filter(b => {
+                const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
+                const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
+                return !(br >= B2X && bl < B2X + B2W && bb >= B2Y && bt < B2Y + B2H);
+            });
+            for (let ty = B2Y; ty < B2Y + B2H; ty++) {
+                for (let tx = B2X; tx < B2X + B2W; tx++) {
+                    this.tiles[ty][tx] = T.BUILDING;
+                }
+            }
+            this.buildings.push({
+                x: B2X * TILE, y: B2Y * TILE,
+                w: B2W * TILE, h: B2H * TILE,
+                color: '#556677', height: 40,
+                windows: true, roofColor: '#445566',
+                isBuilding2: true
+            });
+        }
+
+        // ---- Building1 — SW corner at tile (71,16), 4x3 ----
+        {
+            const B1X = 71, B1W = 4;
+            const B1Y = 14, B1H = 3;
+            this.buildings = this.buildings.filter(b => {
+                const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
+                const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
+                return !(br >= B1X && bl < B1X + B1W && bb >= B1Y && bt < B1Y + B1H);
+            });
+            for (let ty = B1Y; ty < B1Y + B1H; ty++) {
+                for (let tx = B1X; tx < B1X + B1W; tx++) {
+                    this.tiles[ty][tx] = T.BUILDING;
+                }
+            }
+            this.buildings.push({
+                x: B1X * TILE, y: B1Y * TILE,
+                w: B1W * TILE, h: B1H * TILE,
+                color: '#556677', height: 40,
+                windows: true, roofColor: '#445566',
+                isBuilding1: true
+            });
+        }
+
+        // ---- Lawyer building — SW corner at tile (71,20), 5x4 ----
+        {
+            const LBX = 71, LBW = 5;
+            const LBY = 17, LBH = 4;
             this.buildings = this.buildings.filter(b => {
                 const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
                 const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
@@ -414,6 +460,33 @@ class World {
                 windows: true, roofColor: '#1a2a3a',
                 isLawyer: true
             });
+        }
+
+        // ---- Parking lot — SW corner at tile (76,20), 4x4 ----
+        {
+            const PLX = 76, PLW = 4;
+            const PLY = 17, PLH = 4;
+            this.buildings = this.buildings.filter(b => {
+                const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
+                const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
+                return !(br >= PLX && bl < PLX + PLW && bb >= PLY && bt < PLY + PLH);
+            });
+            for (let ty = PLY; ty < PLY + PLH; ty++) {
+                for (let tx = PLX; tx < PLX + PLW; tx++) {
+                    this.tiles[ty][tx] = T.BUILDING;
+                }
+            }
+            this.buildings.push({
+                x: PLX * TILE, y: PLY * TILE,
+                w: PLW * TILE, h: PLH * TILE,
+                color: '#555555', height: 1,
+                isParkinglot: true, noCollision: true
+            });
+            // Walkable rows inside the lot (entry/exit lane)
+            for (let tx = 76; tx <= 79; tx++) {
+                this.tiles[19][tx] = T.ROAD;
+                this.tiles[20][tx] = T.ROAD;
+            }
         }
 
         // ---- Pay & Spray gas station — SW corner at tile (15,62), 4x4 ----
@@ -506,51 +579,63 @@ class World {
             ['29,29', 'roads/parking/police_parking'],
             ['30,29', 'roads/parking/police_parking'],
             ['31,29', 'roads/parking/police_parking'],
-            ['28,36', 'roads/crosswalk'],
-            ['28,37', 'roads/crosswalk'],
-            ['28,38', 'roads/crosswalk'],
-            ['28,39', 'roads/crosswalk'],
-            ['29,36', { key: 'roads/asphalt_stop', rot: Math.PI / 2 }],
-            ['29,37', { key: 'roads/asphalt_stop_line', rot: Math.PI / 2 }],
-            ['30,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
-            ['31,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
-            ['32,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
-            ['33,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
-            ['34,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
-            ['35,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
-            ['36,36', { key: 'roads/asphalt_line', rot: Math.PI / 2 }],
-            // Crosswalk on east side of police block (x=37, south road y=36-39)
-            ['37,36', 'roads/crosswalk'],
-            ['37,37', 'roads/crosswalk'],
-            ['37,38', 'roads/crosswalk'],
-            ['37,39', 'roads/crosswalk'],
-            // Road line sprites — south edge of road (y=39), facing north
-            ['29,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
-            ['30,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
-            ['31,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
-            ['32,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
-            ['33,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
-            ['34,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
-            ['35,39', { key: 'roads/asphalt_line', rot: -Math.PI / 2 }],
-            ['36,38', { key: 'roads/asphalt_stop_line', rot: -Math.PI / 2 }],
-            ['36,39', { key: 'roads/asphalt_stop', rot: -Math.PI / 2 }],
-            // Yellow centre lines — row 37 (CCW) and row 38 (CW)
-            ['30,37', { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 }],
-            ['31,37', { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 }],
-            ['32,37', { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 }],
-            ['33,37', { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 }],
-            ['34,37', { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 }],
-            ['35,37', { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 }],
-            ['30,38', { key: 'roads/asphalt_yellow_line', rot: Math.PI / 2 }],
-            ['31,38', { key: 'roads/asphalt_yellow_line', rot: Math.PI / 2 }],
-            ['32,38', { key: 'roads/asphalt_yellow_line', rot: Math.PI / 2 }],
-            ['33,38', { key: 'roads/asphalt_yellow_line', rot: Math.PI / 2 }],
-            ['34,38', { key: 'roads/asphalt_yellow_line', rot: Math.PI / 2 }],
-            ['35,38', { key: 'roads/asphalt_yellow_line', rot: Math.PI / 2 }],
-            // Asphalt blank fill
-            ['29,38', 'roads/asphalt_blank'],
-            ['36,37', 'roads/asphalt_blank'],
+            ['75,14', 'landscape/grass'],
+            ['75,15', 'landscape/grass'],
+            ['75,16', 'landscape/grass'],
+            ['76,14', 'landscape/grass_fence1'],
+            ['76,15', 'landscape/grass_fence1'],
+            ['76,16', 'landscape/grass_fence1'],
+            ['76,13', 'landscape/grass_fence2'],
+            ['71,13', { key: 'landscape/grass_fence2', rot: -Math.PI / 2 }],
+            ['72,13', { key: 'landscape/grass_fence1', rot: -Math.PI / 2 }],
+            ['73,13', { key: 'landscape/grass_fence1', rot: -Math.PI / 2 }],
+            ['74,13', { key: 'landscape/grass_fence1', rot: -Math.PI / 2 }],
+            ['75,13', { key: 'landscape/grass_fence1', rot: -Math.PI / 2 }],
         ]);
+
+        // East-west road markings — applied to every segment between adjacent vertical roads
+        {
+            const RW = ROAD_WIDTH;
+            const vRoads = roadPositions.v;
+            const hRoads = roadPositions.h;
+            const setRoad = (tx, ty, val) => {
+                if (this.tiles[ty] && this.tiles[ty][tx] === T.ROAD)
+                    this.tileSprites.set(`${tx},${ty}`, val);
+            };
+            const LINE_E  = { key: 'roads/asphalt_line',        rot:  Math.PI / 2 };
+            const LINE_W  = { key: 'roads/asphalt_line',        rot: -Math.PI / 2 };
+            const STOP_E  = { key: 'roads/asphalt_stop',        rot:  Math.PI / 2 };
+            const STOP_W  = { key: 'roads/asphalt_stop',        rot: -Math.PI / 2 };
+            const SLINE_E = { key: 'roads/asphalt_stop_line',   rot:  Math.PI / 2 };
+            const SLINE_W = { key: 'roads/asphalt_stop_line',   rot: -Math.PI / 2 };
+            const YLINE_E = { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 };
+            const YLINE_W = { key: 'roads/asphalt_yellow_line', rot:  Math.PI / 2 };
+
+            for (const hy of hRoads) {
+                for (let vi = 0; vi < vRoads.length - 1; vi++) {
+                    const vxL = vRoads[vi];
+                    const vxR = vRoads[vi + 1];
+                    // Crosswalks at the edges of each segment
+                    const crossL = vxL + RW;
+                    const crossR = vxR - 1;
+                    for (let r = 0; r < RW; r++) {
+                        this.tileSprites.set(`${crossL},${hy + r}`, 'roads/crosswalk');
+                        this.tileSprites.set(`${crossR},${hy + r}`, 'roads/crosswalk');
+                    }
+                    // Lane markings between the crosswalks
+                    const startX = crossL + 1;
+                    const endX   = crossR - 1;
+                    for (let x = startX; x <= endX; x++) {
+                        const isLeft  = x === startX;
+                        const isRight = x === endX;
+                        setRoad(x, hy,     isLeft  ? STOP_E  : LINE_E);
+                        setRoad(x, hy + 1, isLeft  ? SLINE_E : isRight ? 'roads/asphalt_blank' : YLINE_E);
+                        setRoad(x, hy + 2, isRight ? SLINE_W : isLeft  ? 'roads/asphalt_blank' : YLINE_W);
+                        setRoad(x, hy + 3, isRight ? STOP_W  : LINE_W);
+                    }
+                }
+            }
+        }
 
         // Fill rest of police block (x=29-36, y=27-34) with asphalt where not building or parking
         for (let ty = 27; ty <= 34; ty++) {
@@ -601,7 +686,7 @@ class World {
         };
 
         for (const b of this.buildings) {
-            if (!b.isHospital && !b.isPoliceStation && !b.isBank) continue;
+            if (!b.isHospital && !b.isPoliceStation && !b.isBank && !b.isLawyer && !b.isBuilding1 && !b.isBuilding2) continue;
             const bx1 = Math.round(b.x / TILE);
             const by1 = Math.round(b.y / TILE);
             const bx2 = bx1 + Math.round(b.w / TILE) - 1;
@@ -617,21 +702,44 @@ class World {
             const topY   = findSW(midX,  by1 - 1,  0, -1);
             const botY   = findSW(midX,  by2 + 1,  0,  1);
 
-            if (leftX < 0 || rightX < 0 || topY < 0 || botY < 0) continue;
+            // Place each side independently — skip sides with no sidewalk rather than the whole building
+            const hasL = leftX >= 0, hasR = rightX >= 0, hasT = topY >= 0, hasB = botY >= 0;
 
-            // Corners
-            set(leftX,  topY, 'sidewalk/corner', 0);               // NW
-            set(rightX, topY, 'sidewalk/corner', Math.PI / 2);     // NE
-            set(rightX, botY, 'sidewalk/corner', Math.PI);         // SE
-            set(leftX,  botY, 'sidewalk/corner', -Math.PI / 2);    // SW
+            // Corners (only where both adjacent sides exist)
+            if (hasL && hasT) set(leftX,  topY, 'sidewalk/corner', 0);
+            if (hasR && hasT) set(rightX, topY, 'sidewalk/corner', Math.PI / 2);
+            if (hasR && hasB) set(rightX, botY, 'sidewalk/corner', Math.PI);
+            if (hasL && hasB) set(leftX,  botY, 'sidewalk/corner', -Math.PI / 2);
             // Top edge
-            for (let tx = leftX + 1; tx < rightX; tx++) set(tx, topY, 'sidewalk/sidewalk_plain', 0);
+            if (hasT) {
+                const tLeft  = hasL ? leftX  + 1 : bx1;
+                const tRight = hasR ? rightX     : bx2 + 1;
+                for (let tx = tLeft; tx < tRight; tx++) set(tx, topY, 'sidewalk/sidewalk_plain', 0);
+            }
             // Bottom edge
-            for (let tx = leftX + 1; tx < rightX; tx++) set(tx, botY, 'sidewalk/sidewalk_plain', Math.PI);
+            if (hasB) {
+                const tLeft  = hasL ? leftX  + 1 : bx1;
+                const tRight = hasR ? rightX     : bx2 + 1;
+                for (let tx = tLeft; tx < tRight; tx++) set(tx, botY, 'sidewalk/sidewalk_plain', Math.PI);
+            }
             // Left edge
-            for (let ty = topY + 1; ty < botY; ty++) set(leftX,  ty, 'sidewalk/sidewalk_plain', -Math.PI / 2);
+            if (hasL) {
+                const tTop = hasT ? topY + 1 : by1;
+                const tBot = hasB ? botY     : by2 + 1;
+                for (let ty = tTop; ty < tBot; ty++) set(leftX, ty, 'sidewalk/sidewalk_plain', -Math.PI / 2);
+            }
             // Right edge
-            for (let ty = topY + 1; ty < botY; ty++) set(rightX, ty, 'sidewalk/sidewalk_plain', Math.PI / 2);
+            if (hasR) {
+                const tTop = hasT ? topY + 1 : by1;
+                const tBot = hasB ? botY     : by2 + 1;
+                for (let ty = tTop; ty < tBot; ty++) set(rightX, ty, 'sidewalk/sidewalk_plain', Math.PI / 2);
+            }
+        }
+
+        // Manual sidewalk sprite placements
+        for (let tx = 76; tx <= 79; tx++) {
+            set(tx, 21, 'sidewalk/sidewalk_plain', Math.PI); // south face (row above road at y=22)
+            set(tx, 12, 'sidewalk/sidewalk_plain', 0);       // north face (row below road at y=8-11)
         }
     }
 
@@ -693,7 +801,7 @@ class World {
         return tilePos * TILE + TILE / 2;
     }
 
-    draw(ctx, camera, images) {
+    draw(ctx, camera, images, showGrid = false) {
         const startX = Math.max(0, Math.floor((camera.x - camera.width / 2 / camera.zoom) / TILE) - 1);
         const startY = Math.max(0, Math.floor((camera.y - camera.height / 2 / camera.zoom) / TILE) - 1);
         const endX = Math.min(WORLD_W, Math.ceil((camera.x + camera.width / 2 / camera.zoom) / TILE) + 1);
@@ -801,8 +909,8 @@ class World {
             }
         }
 
-        // DEV: tile coordinate grid (always on — remove when done)
-        {
+        // DEV: tile coordinate grid (toggle with G key)
+        if (showGrid) {
             const LABEL_EVERY = 2;
             ctx.strokeStyle = 'rgba(255,255,0,0.3)';
             ctx.lineWidth = 0.5;
@@ -821,8 +929,20 @@ class World {
         }
     }
 
+    // Draw ground-level sprites (no height — must render before entities)
+    drawGroundOverlays(ctx, camera, images) {
+        for (const b of this.buildings) {
+            if (!b.isParkinglot) continue;
+            if (!camera.isVisible(b.x, b.y, b.w, b.h)) continue;
+            if (images && images['buildings/parkinglot'] && images['buildings/parkinglot'].complete) {
+                ctx.drawImage(images['buildings/parkinglot'], b.x, b.y, b.w, b.h);
+            }
+        }
+    }
+
     drawBuildings(ctx, camera, images) {
         for (const b of this.buildings) {
+            if (b.isParkinglot) continue; // drawn in drawGroundOverlays before entities
             if (!camera.isVisible(b.x, b.y, b.w, b.h)) continue;
 
             if (b.isHospital && images && images['hospital'] && images['hospital'].complete) {
@@ -840,17 +960,28 @@ class World {
                 continue;
             }
 
+            if (b.isParkinglot && images && images['buildings/parkinglot'] && images['buildings/parkinglot'].complete) {
+                ctx.drawImage(images['buildings/parkinglot'], b.x, b.y, b.w, b.h);
+                continue;
+            }
+
             if (b.isPaySpray && images && images['buildings/gas'] && images['buildings/gas'].complete) {
                 ctx.drawImage(images['buildings/gas'], b.x, b.y, b.w, b.h);
                 continue;
             }
 
             if (b.isLawyer && images && images['buildings/lawyer'] && images['buildings/lawyer'].complete) {
-                ctx.save();
-                ctx.translate(b.x + b.w / 2, b.y + b.h / 2);
-                ctx.rotate(Math.PI / 2);
-                ctx.drawImage(images['buildings/lawyer'], -b.w / 2, -b.h / 2, b.w, b.h);
-                ctx.restore();
+                ctx.drawImage(images['buildings/lawyer'], b.x, b.y, b.w, b.h);
+                continue;
+            }
+
+            if (b.isBuilding1 && images && images['buildings/building1'] && images['buildings/building1'].complete) {
+                ctx.drawImage(images['buildings/building1'], b.x, b.y, b.w, b.h);
+                continue;
+            }
+
+            if (b.isBuilding2 && images && images['buildings/building2'] && images['buildings/building2'].complete) {
+                ctx.drawImage(images['buildings/building2'], b.x, b.y, b.w, b.h);
                 continue;
             }
 
@@ -894,6 +1025,7 @@ class World {
 
     checkBuildingCollision(x, y, w, h) {
         for (const b of this.buildings) {
+            if (b.noCollision) continue;
             if (Collision.aabb({ x, y, w, h }, { x: b.x, y: b.y, w: b.w, h: b.h })) {
                 return b;
             }

@@ -24,6 +24,8 @@ class Player {
         this.respawnTimer = 0;
         this.enterCooldown = 0;
         this.isSwimming = false;
+        this.arrested = false;
+        this.arrestedLost = 0;
     }
 
     update(dt, world, vehicles, audio, particles) {
@@ -200,6 +202,7 @@ class Player {
     enterVehicle(vehicle, audio) {
         this.inVehicle = vehicle;
         vehicle.driver = this;
+        vehicle.abandonedTimer = 0; // reset if player returns to their abandoned car
         this.enterCooldown = 0.5;
         audio.playCarDoor();
         audio.startRadio(0);
@@ -211,6 +214,8 @@ class Player {
         this.y = this.inVehicle.y + Math.sin(this.inVehicle.angle + Math.PI / 2) * 40;
         this.inVehicle.driver = null;
         this.inVehicle.speed *= 0.3;
+        this.inVehicle.wasPlayerDriven = true;
+        this.inVehicle.abandonedTimer = 0;
         this.inVehicle = null;
         this.enterCooldown = 0.5;
         if (typeof game !== 'undefined') game.audio.stopRadio();
@@ -231,9 +236,16 @@ class Player {
         this.health = 100;
         this.armor = 0;
         this.wantedLevel = 0;
-        this.money = Math.max(0, this.money - 100);
-        this.x = HOSPITAL_PX.x;
-        this.y = HOSPITAL_PX.y;
+        if (this.arrested) {
+            this.arrested = false;
+            this.arrestedLost = 0;
+            this.x = STATION_PX.x;
+            this.y = STATION_PX.y + 2 * TILE;
+        } else {
+            this.money = Math.max(0, this.money - 100);
+            this.x = HOSPITAL_PX.x;
+            this.y = HOSPITAL_PX.y;
+        }
     }
 
     draw(ctx) {
