@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check /Users/pete/Desktop/vice_city_stories/js/vehicle.js)"
+    ]
+  }
+}

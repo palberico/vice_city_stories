@@ -637,6 +637,51 @@ class World {
             }
         }
 
+        // North-south road markings — applied to every segment between adjacent horizontal roads
+        {
+            const RW = ROAD_WIDTH;
+            const vRoads = roadPositions.v;
+            const hRoads = roadPositions.h;
+            const setRoad = (tx, ty, val) => {
+                if (this.tiles[ty] && this.tiles[ty][tx] === T.ROAD)
+                    this.tileSprites.set(`${tx},${ty}`, val);
+            };
+            const LINE_S  = { key: 'roads/asphalt_line',        rot: 0 };
+            const LINE_N  = { key: 'roads/asphalt_line',        rot: Math.PI };
+            const STOP_S  = { key: 'roads/asphalt_stop_alt',      ox: 1 };
+            const STOP_N  = { key: 'roads/asphalt_stop_alt',      rot: Math.PI };
+            const SLINE_S = { key: 'roads/asphalt_stop_line_alt' };
+            const SLINE_N = { key: 'roads/asphalt_stop_line_alt', rot: Math.PI };
+            const YLINE_S = { key: 'roads/asphalt_yellow_line', rot: Math.PI };
+            const YLINE_N = { key: 'roads/asphalt_yellow_line', rot: 0 };
+            const CW_NS   = { key: 'roads/crosswalk',           rot: Math.PI / 2 };
+
+            for (const vx of vRoads) {
+                for (let hi = 0; hi < hRoads.length - 1; hi++) {
+                    const hyT = hRoads[hi];
+                    const hyB = hRoads[hi + 1];
+                    // Crosswalks at the top and bottom edges of each segment
+                    const crossT = hyT + RW;
+                    const crossB = hyB - 1;
+                    for (let r = 0; r < RW; r++) {
+                        this.tileSprites.set(`${vx + r},${crossT}`, CW_NS);
+                        this.tileSprites.set(`${vx + r},${crossB}`, CW_NS);
+                    }
+                    // Lane markings between the crosswalks
+                    const startY = crossT + 1;
+                    const endY   = crossB - 1;
+                    for (let y = startY; y <= endY; y++) {
+                        const isTop    = y === startY;
+                        const isBottom = y === endY;
+                        setRoad(vx,     y, isTop    ? STOP_S  : LINE_S);
+                        setRoad(vx + 1, y, isTop    ? SLINE_S : isBottom ? 'roads/asphalt_blank' : YLINE_S);
+                        setRoad(vx + 2, y, isBottom ? SLINE_N : isTop    ? 'roads/asphalt_blank' : YLINE_N);
+                        setRoad(vx + 3, y, isBottom ? STOP_N  : LINE_N);
+                    }
+                }
+            }
+        }
+
         // Fill rest of police block (x=29-36, y=27-34) with asphalt where not building or parking
         for (let ty = 27; ty <= 34; ty++) {
             for (let tx = 29; tx <= 36; tx++) {
@@ -657,6 +702,21 @@ class World {
         // Helipad open/close state (toggles every 3 minutes)
         this.helipadOpen = false;
         this.helipadTimer = 0;
+
+        // Explicit tile sprite overrides — applied after road marking loops so they are not overwritten
+
+        // Fill all intersections with asphalt_blank
+        for (const vx of roadPositions.v) {
+            for (const hy of roadPositions.h) {
+                for (let ty = hy; ty < hy + ROAD_WIDTH; ty++) {
+                    for (let tx = vx; tx < vx + ROAD_WIDTH; tx++) {
+                        if (tx === 26 && ty === 24) continue;
+                        this.tileSprites.set(`${tx},${ty}`, 'roads/asphalt_blank');
+                    }
+                }
+            }
+        }
+        this.tileSprites.set('26,24', 'roads/asphalt_sewer');
 
         // Multi-tile sprites — drawn as a single image spanning multiple tiles
         // SW corner at (33,29) → NW corner at (33,27), 3×3 tiles
@@ -818,17 +878,19 @@ class World {
                     const entry = this.tileSprites.get(`${x},${y}`);
                     if (entry) {
                         const spriteKey = typeof entry === 'string' ? entry : entry.key;
-                        const rot = typeof entry === 'string' ? 0 : entry.rot;
+                        const rot = typeof entry === 'string' ? 0 : (entry.rot || 0);
+                        const ox  = typeof entry === 'string' ? 0 : (entry.ox  || 0);
+                        const oy  = typeof entry === 'string' ? 0 : (entry.oy  || 0);
                         const img = images[spriteKey];
                         if (img && img.complete && img.width > 0) {
                             if (rot) {
                                 ctx.save();
-                                ctx.translate(x * TILE + TILE / 2, y * TILE + TILE / 2);
+                                ctx.translate(x * TILE + TILE / 2 + ox, y * TILE + TILE / 2 + oy);
                                 ctx.rotate(rot);
                                 ctx.drawImage(img, -TILE / 2, -TILE / 2, TILE + 1, TILE + 1);
                                 ctx.restore();
                             } else {
-                                ctx.drawImage(img, x * TILE, y * TILE, TILE + 1, TILE + 1);
+                                ctx.drawImage(img, x * TILE + ox, y * TILE + oy, TILE + 1, TILE + 1);
                             }
                         }
                     }

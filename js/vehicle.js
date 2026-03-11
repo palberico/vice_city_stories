@@ -476,7 +476,21 @@ class Vehicle {
                     }
                     if (validChoices.length === 0) validChoices = ['up', 'right'];
 
-                    const newDir = validChoices[Math.floor(Math.random() * validChoices.length)];
+                    // If a destination is set, bias 70% of intersection choices toward it
+                    let newDir;
+                    if (this.ai.destX !== undefined && this.ai.destY !== undefined && validChoices.length > 1 && Math.random() < 0.7) {
+                        const dirAngles = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
+                        newDir = validChoices.reduce((best, c) => {
+                            const cx = this.x + Math.cos(dirAngles[c]) * TILE * 4;
+                            const cy = this.y + Math.sin(dirAngles[c]) * TILE * 4;
+                            const bx = this.x + Math.cos(dirAngles[best]) * TILE * 4;
+                            const by = this.y + Math.sin(dirAngles[best]) * TILE * 4;
+                            return Collision.dist(cx, cy, this.ai.destX, this.ai.destY) <
+                                   Collision.dist(bx, by, this.ai.destX, this.ai.destY) ? c : best;
+                        });
+                    } else {
+                        newDir = validChoices[Math.floor(Math.random() * validChoices.length)];
+                    }
 
                     // Set angle and snap to correct lane for new direction
                     if (newDir === 'right') {

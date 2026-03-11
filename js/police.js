@@ -66,7 +66,7 @@ class PoliceHelicopter {
         if (dist > 10 && this.liftScale > 0.3) {
             this.x += (dx / dist) * this.speed * dt;
             this.y += (dy / dist) * this.speed * dt;
-            this.angle = Math.atan2(dy, dx) - Math.PI / 2;
+            this.angle = Math.atan2(dy, dx);
         }
 
         this.x = Math.max(100, Math.min(WORLD_PX_W - 100, this.x));
@@ -233,6 +233,106 @@ class PoliceSystem {
         }
     }
 
+    // ---- Trigger arrest: confiscate money and send player to station ----
+    _triggerArrest(player, audio) {
+        if (!player.alive || player.arrested) return;
+        const penalty = player.wantedLevel <= 1 ? 100 : player.wantedLevel <= 2 ? 250 : 400;
+        const lost = Math.min(player.money, penalty);
+        player.money = Math.max(0, player.money - lost);
+        player.wantedLevel = 0;
+        player.wantedDecayTimer = 0;
+        if (player.inVehicle) {
+            player.inVehicle.driver = null;
+            player.inVehicle.speed = 0;
+            player.inVehicle = null;
+            player.enterCooldown = 0.5;
+        }
+        player.arrested = true;
+        player.arrestedLost = lost;
+        player.alive = false;
+        player.respawnTimer = 3;
+        audio.playWantedUp();
+    }
+
+    // ---- Check if a unit should arrest the player (1–3 stars only) ----
+    _checkArrest(unit, player, audio, dt) {
+        if (player.wantedLevel > 3 || player.wantedLevel <= 0 || !player.alive || player.arrested) {
+            unit.arrestTimer = 0;
+            return;
+        }
+        const dist = Collision.dist(unit.x, unit.y, player.x, player.y);
+        // Immediate arrest if officer reaches player on foot
+        if (!player.inVehicle && dist < 45) {
+            this._triggerArrest(player, audio);
+            return;
+        }
+        // Vehicle arrest: player must be nearly stopped next to a cop for 2.5s
+        if (player.inVehicle && dist < 80 && Math.abs(player.inVehicle.speed) < 20) {
+            unit.arrestTimer = (unit.arrestTimer || 0) + dt;
+            if (unit.arrestTimer >= 2.5) this._triggerArrest(player, audio);
+        } else {
+            unit.arrestTimer = 0;
+        }
+    }
+
+    // ---- Snap a world position to the nearest road intersection center ----
+    _findRoadblockPos(fromX, fromY, playerAngle, world) {
+        // Project ~5 tiles ahead of the player
+        const projX = fromX + Math.cos(playerAngle) * TILE * 5;
+        const projY = fromY + Math.sin(playerAngle) * TILE * 5;
+        const RW = world.ROAD_WIDTH || 4;
+        // Find nearest intersection (where a v-road and h-road cross)
+        let bestPos = null;
+        let bestDist = Infinity;
+        for (const vx of world.roadPositions.v) {
+            for (const hy of world.roadPositions.h) {
+                const ix = (vx + RW / 2) * TILE;
+                const iy = (hy + RW / 2) * TILE;
+                const d = Collision.dist(projX, projY, ix, iy);
+                if (d < bestDist) { bestDist = d; bestPos = { x: ix, y: iy }; }
+            }
+        }
+        return bestPos || { x: projX, y: projY };
+    }
+
+    // ---- Roadblock unit: race ahead of player, park perpendicular, then shoot ----
+    _updateRoadblock(unit, player, world, audio, particles, dt) {
+        if (!unit.roadblockPos) {
+            // Snap to nearest road intersection ahead of the player
+            const playerAngle = player.inVehicle ? player.inVehicle.angle : player.angle;
+            unit.roadblockPos = this._findRoadblockPos(player.x, player.y, playerAngle, world);
+        }
+        if (!unit.roadblockSet) {
+            this._driveToward(unit, unit.roadblockPos.x, unit.roadblockPos.y, 1.0, world, dt);
+            unit.x = unit.vehicle.x;
+            unit.y = unit.vehicle.y;
+            if (Collision.dist(unit.x, unit.y, unit.roadblockPos.x, unit.roadblockPos.y) < 80) {
+                unit.roadblockSet = true;
+                unit.vehicle.speed = 0;
+                unit.vehicle.angle += Math.PI / 2; // park perpendicular to block the road
+            }
+        } else {
+            // Slowly halt
+            unit.vehicle.speed *= (1 - 6 * dt);
+            if (Math.abs(unit.vehicle.speed) < 1) unit.vehicle.speed = 0;
+            unit.x = unit.vehicle.x;
+            unit.y = unit.vehicle.y;
+        }
+        // Shoot at player from the roadblock position
+        const dist = Collision.dist(unit.x, unit.y, player.x, player.y);
+        if (dist < 500 && dist > 30) {
+            unit.shootTimer -= dt;
+            if (unit.shootTimer <= 0) {
+                const ang = Math.atan2(player.y - unit.y, player.x - unit.x) + (Math.random() - 0.5) * 0.3;
+                player.weapons.bullets.push(new Bullet(unit.x, unit.y, ang, 500, 10, 'police'));
+                audio.playGunshot();
+                particles.muzzleFlash(unit.x + Math.cos(ang) * 15, unit.y + Math.sin(ang) * 15, ang);
+                unit.shootTimer = 0.5;
+            }
+        }
+        this._checkArrest(unit, player, audio, dt);
+    }
+
     // ---- Spawn one patrol car into the first unassigned parking spot ----
     _spawnPatrolUnit(vehicles, images) {
         // Find first spot not already owned by an active patrol unit
@@ -267,14 +367,32 @@ class PoliceSystem {
         if (!this.initialized) {
             this.initialized = true;
             this.deployTimer = 0; // first one spawns immediately
-            this.helicopter = null; // helicopter is now a Vehicle on the helipad
         }
+
+        // Spawn helicopter only at 5 stars; destroy it when wanted clears
+        if (player.wantedLevel >= 5) {
+            if (!this.helicopter) {
+                this.helicopter = new PoliceHelicopter(images);
+                this.helicopter.active = true;
+            }
+        } else if (this.helicopter && player.wantedLevel === 0) {
+            this.helicopter = null;
+        }
+
+        if (this.helicopter) this.helicopter.update(dt, player, audio, particles);
 
         // ---- Patrol unit management ----
         // Remove dead/done patrol units
         for (let i = this.patrolUnits.length - 1; i >= 0; i--) {
             const unit = this.patrolUnits[i];
             if (!unit.alive) { this.patrolUnits.splice(i, 1); continue; }
+
+            // Player stole this patrol car — stop tracking it, schedule a replacement
+            if (unit.vehicle && unit.vehicle.driver) {
+                this.patrolUnits.splice(i, 1);
+                this.deployTimer = Math.max(this.deployTimer, 15);
+                continue;
+            }
 
             // Bail if vehicle destroyed
             if (unit.vehicle && unit.vehicle.health <= 0 && !unit.bailed) {
@@ -297,7 +415,7 @@ class PoliceSystem {
 
         // ---- Update each patrol unit ----
         for (const unit of this.patrolUnits) {
-            if (!unit.alive || !unit.vehicle || unit.vehicle.health <= 0) continue;
+            if (!unit.alive || !unit.vehicle || unit.vehicle.health <= 0 || unit.vehicle.driver) continue;
 
             const v = unit.vehicle;
             const distToPlayer = Collision.dist(unit.x, unit.y, player.x, player.y);
@@ -308,11 +426,14 @@ class PoliceSystem {
                 unit.patrolPhase = 'chasing';
                 unit.patrolling = false;
                 v.ai.active = false;
+                v.ai.destX = undefined; // clear any return destination
+                v.ai.destY = undefined;
                 this._driveToward(unit, player.x, player.y, 0.8, world, dt);
                 unit.x = v.x;
                 unit.y = v.y;
 
-                if (distToPlayer < 400 && distToPlayer > 50) {
+                // Only shoot at 4+ stars; 1–3 stars → pursue and try to arrest
+                if (player.wantedLevel >= 4 && distToPlayer < 400 && distToPlayer > 50) {
                     unit.shootTimer -= dt;
                     if (unit.shootTimer <= 0) {
                         const chaseAngle = Math.atan2(player.y - unit.y, player.x - unit.x);
@@ -323,6 +444,7 @@ class PoliceSystem {
                         unit.shootTimer = 0.8 - player.wantedLevel * 0.05;
                     }
                 }
+                this._checkArrest(unit, player, audio, dt);
                 if (distToPlayer < 50 && player.inVehicle) {
                     player.inVehicle.health -= dt * 15;
                     v.speed *= 0.5;
@@ -330,11 +452,27 @@ class PoliceSystem {
                 continue;
             }
 
-            // Chase → returning when wanted clears
+            // Chase → wind-down when wanted clears (pause briefly, then despawn & replace)
             if (unit.patrolPhase === 'chasing' && player.wantedLevel <= 0) {
-                unit.patrolPhase = 'returning';
-                unit.returnTimer = 0;
+                unit.patrolPhase = 'winding_down';
+                unit.windTimer = 3 + Math.random() * 2;
                 v.ai.active = false;
+            }
+
+            // Wind-down: slow to a stop, then despawn and schedule a fresh patrol car
+            if (unit.patrolPhase === 'winding_down') {
+                v.speed *= (1 - 2 * dt);
+                if (Math.abs(v.speed) < 2) v.speed = 0;
+                unit.windTimer -= dt;
+                unit.x = v.x;
+                unit.y = v.y;
+                if (unit.windTimer <= 0) {
+                    const idx = vehicles.indexOf(v);
+                    if (idx >= 0) vehicles.splice(idx, 1);
+                    unit.alive = false;
+                    if (this.deployTimer < 5) this.deployTimer = 5;
+                }
+                continue;
             }
 
             if (unit.patrolPhase === 'parked') {
@@ -360,7 +498,7 @@ class PoliceSystem {
             } else if (unit.patrolPhase === 'patrolling') {
                 unit.patrolling = true;
                 v.ai.active = true;
-                v.ai.targetSpeed = 60 + Math.random() * 0.1;
+                v.ai.targetSpeed = 60 + Math.random() * 40;
                 unit.patrolTimer += dt;
                 unit.x = v.x;
                 unit.y = v.y;
@@ -371,26 +509,23 @@ class PoliceSystem {
                 }
 
             } else if (unit.patrolPhase === 'returning') {
-                unit.returnTimer += dt;
                 // Target: north road entry to station driveway (x=31, on h=22 road)
                 const entryX = 31 * TILE + TILE / 2;
                 const entryY = 22 * TILE + TILE / 2;
 
-                // Use road AI for 2 minutes so the car follows roads back naturally
-                if (unit.returnTimer < 120) {
-                    v.ai.active = true;
-                } else {
-                    // Timeout fallback: drive to north road entry
-                    v.ai.active = false;
-                    this._driveToward(unit, entryX, entryY, 0.6, world, dt);
-                }
+                // Road AI with destination bias — car steers toward station at intersections
+                v.ai.active = true;
+                v.ai.destX = entryX;
+                v.ai.destY = entryY;
                 unit.x = v.x;
                 unit.y = v.y;
 
-                // Trigger entry when car reaches north road near station driveway
+                // Trigger entry when car reaches the north road near the station driveway
                 const onNorthRoad = v.y >= 22 * TILE && v.y <= 27 * TILE;
                 const nearEntryX = Math.abs(v.x - entryX) < TILE * 2;
                 if (onNorthRoad && nearEntryX) {
+                    v.ai.destX = undefined;
+                    v.ai.destY = undefined;
                     unit.patrolPhase = 'entering';
                     v.ai.active = false;
                     v.x = entryX; // snap to driveway column
@@ -417,94 +552,118 @@ class PoliceSystem {
 
         // ---- Chase units (spawned when wanted > 0) ----
         if (player.wantedLevel <= 0) {
-            // Clean up all chase units
+            // Begin wind-down for all active chase units instead of instantly despawning
             for (const unit of this.units) {
-                if (unit.vehicle) {
-                    const idx = vehicles.indexOf(unit.vehicle);
-                    if (idx >= 0) vehicles.splice(idx, 1);
+                if (!unit.windingDown) {
+                    unit.windingDown = true;
+                    unit.windTimer = 3 + Math.random() * 2;
+                    if (unit.vehicle) unit.vehicle.ai.active = false;
                 }
             }
-            this.units = [];
-            if (this.helicopter) this.helicopter.active = false;
         } else {
-            // Spawn chase units from station based on wanted level
-            const vehicleUnits = this.units.filter(u => !u.onFoot);
-            if (vehicleUnits.length < player.wantedLevel * 2) {
+            // Spawn chase units scaled to wanted level
+            // Exclude bailed/winding-down units from the count
+            const activeVehicleUnits = this.units.filter(u => !u.onFoot && !u.windingDown);
+            if (activeVehicleUnits.length < player.wantedLevel * 2) {
                 this._spawnChaseUnit(player, vehicles, images);
             }
 
             this.sirenTimer -= dt;
-            if (this.sirenTimer <= 0 && (this.units.length > 0 || this.patrolUnits.some(u => !u.patrolling))) {
+            if (this.sirenTimer <= 0 && (this.units.some(u => !u.windingDown) || this.patrolUnits.some(u => !u.patrolling))) {
                 audio.playSiren();
                 this.sirenTimer = 2;
             }
 
-            // 5-star: activate the parked police helicopter Vehicle to chase the player
-            if (player.wantedLevel >= 5) {
-                const heliV = vehicles.find(v => v.type === 'helicopter_police' && !v.driver);
-                if (heliV && heliV.isHelipadParked) {
-                    heliV.isHelipadParked = false;
-                    heliV.ai.active = true;
+        }
+
+        // ---- Update all chase units (including winding-down ones) ----
+        for (let i = this.units.length - 1; i >= 0; i--) {
+            const unit = this.units[i];
+            if (!unit.alive) { this.units.splice(i, 1); continue; }
+
+            // Wind-down: slow vehicle, then despawn
+            if (unit.windingDown) {
+                unit.windTimer -= dt;
+                if (unit.vehicle && !unit.vehicle.driver) {
+                    unit.vehicle.speed *= (1 - 3 * dt);
+                    if (Math.abs(unit.vehicle.speed) < 1) unit.vehicle.speed = 0;
                 }
+                if (unit.windTimer <= 0) {
+                    if (unit.vehicle && !unit.vehicle.driver) {
+                        const idx = vehicles.indexOf(unit.vehicle);
+                        if (idx >= 0) vehicles.splice(idx, 1);
+                    }
+                    this.units.splice(i, 1);
+                }
+                continue;
             }
 
-            for (const unit of this.units) {
-                if (!unit.alive) continue;
-
-                if (unit.onFoot) {
-                    const dx = player.x - unit.x;
-                    const dy = player.y - unit.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    unit.angle = Math.atan2(dy, dx);
-
-                    if (dist > 50) {
-                        const footSpeed = 120;
-                        const nx = unit.x + Math.cos(unit.angle) * footSpeed * dt;
-                        const ny = unit.y + Math.sin(unit.angle) * footSpeed * dt;
-                        if (world.isWalkable(nx, ny)) { unit.x = nx; unit.y = ny; }
-                    }
-
-                    if (dist < 400 && dist > 40) {
-                        unit.shootTimer -= dt;
-                        if (unit.shootTimer <= 0) {
-                            const bulletAngle = unit.angle + (Math.random() - 0.5) * 0.25;
-                            player.weapons.bullets.push(new Bullet(unit.x, unit.y, bulletAngle, 500, 10, 'police'));
-                            audio.playGunshot();
-                            particles.muzzleFlash(unit.x + Math.cos(bulletAngle) * 15, unit.y + Math.sin(bulletAngle) * 15, bulletAngle);
-                            unit.shootTimer = 1.0;
-                        }
-                    }
-
-                    unit.x = Math.max(10, Math.min(WORLD_PX_W - 10, unit.x));
-                    unit.y = Math.max(10, Math.min(WORLD_PX_H - 10, unit.y));
-                    continue;
-                }
-
-                // Vehicle chase unit
+            if (unit.onFoot) {
                 const dx = player.x - unit.x;
                 const dy = player.y - unit.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
+                unit.angle = Math.atan2(dy, dx);
 
-                if (unit.vehicle && unit.vehicle.health <= 0 && !unit.bailed) {
-                    this._bailOut(unit);
-                    continue;
+                if (dist > 50) {
+                    const footSpeed = 120;
+                    const nx = unit.x + Math.cos(unit.angle) * footSpeed * dt;
+                    const ny = unit.y + Math.sin(unit.angle) * footSpeed * dt;
+                    if (world.isWalkable(nx, ny)) { unit.x = nx; unit.y = ny; }
                 }
 
-                if (unit.vehicle && unit.vehicle.health > 0) {
-                    this._driveToward(unit, player.x, player.y, 0.9, world, dt);
-                    unit.x = unit.vehicle.x;
-                    unit.y = unit.vehicle.y;
-
-                    if (dist < 50 && player.inVehicle) {
-                        player.inVehicle.health -= dt * 15;
-                        unit.vehicle.speed *= 0.5;
-                    }
-                }
-
-                if (player.wantedLevel >= 3 && dist < 400 && dist > 50) {
+                // On-foot officers only shoot at 4+ stars; otherwise try to arrest
+                if (player.wantedLevel >= 4 && dist < 400 && dist > 40) {
                     unit.shootTimer -= dt;
                     if (unit.shootTimer <= 0) {
-                        const chaseAngle = Math.atan2(dy, dx);
+                        const bulletAngle = unit.angle + (Math.random() - 0.5) * 0.25;
+                        player.weapons.bullets.push(new Bullet(unit.x, unit.y, bulletAngle, 500, 10, 'police'));
+                        audio.playGunshot();
+                        particles.muzzleFlash(unit.x + Math.cos(bulletAngle) * 15, unit.y + Math.sin(bulletAngle) * 15, bulletAngle);
+                        unit.shootTimer = 1.0;
+                    }
+                }
+                this._checkArrest(unit, player, audio, dt);
+
+                unit.x = Math.max(10, Math.min(WORLD_PX_W - 10, unit.x));
+                unit.y = Math.max(10, Math.min(WORLD_PX_H - 10, unit.y));
+                continue;
+            }
+
+            // Skip vehicles the player has stolen
+            if (unit.vehicle && unit.vehicle.driver) continue;
+
+            // Bail out of destroyed vehicle
+            if (unit.vehicle && unit.vehicle.health <= 0 && !unit.bailed) {
+                this._bailOut(unit);
+                this.units.splice(i, 1);
+                continue;
+            }
+
+            // Roadblock units: race ahead, park perpendicular, shoot
+            if (unit.role === 'roadblock' && unit.vehicle && unit.vehicle.health > 0) {
+                this._updateRoadblock(unit, player, world, audio, particles, dt);
+                continue;
+            }
+
+            // Chase units: pursue player directly
+            if (unit.vehicle && unit.vehicle.health > 0) {
+                this._driveToward(unit, player.x, player.y, 0.9, world, dt);
+                unit.x = unit.vehicle.x;
+                unit.y = unit.vehicle.y;
+
+                const dist = Collision.dist(unit.x, unit.y, player.x, player.y);
+
+                // Ram player's vehicle when very close
+                if (dist < 50 && player.inVehicle) {
+                    player.inVehicle.health -= dt * 15;
+                    unit.vehicle.speed *= 0.5;
+                }
+
+                // 4+ stars: chase units shoot; 1–3 stars: attempt arrest
+                if (player.wantedLevel >= 4 && dist < 400 && dist > 50) {
+                    unit.shootTimer -= dt;
+                    if (unit.shootTimer <= 0) {
+                        const chaseAngle = Math.atan2(player.y - unit.y, player.x - unit.x);
                         const bulletAngle = chaseAngle + (Math.random() - 0.5) * 0.2;
                         player.weapons.bullets.push(new Bullet(unit.x, unit.y, bulletAngle, 500, 10, 'police'));
                         audio.playGunshot();
@@ -512,12 +671,12 @@ class PoliceSystem {
                         unit.shootTimer = 0.8 - player.wantedLevel * 0.05;
                     }
                 }
+                this._checkArrest(unit, player, audio, dt);
             }
         }
     }
 
     _spawnChaseUnit(player, vehicles, images) {
-        // All chase units spawn from the police station parking area
         const vehicle = new Vehicle(STATION_PARKING_PX.x, STATION_PARKING_PX.y, 'police', images);
         vehicle.angle = Math.atan2(player.y - STATION_PARKING_PX.y, player.x - STATION_PARKING_PX.x);
         vehicle.ai.active = false;
@@ -525,6 +684,19 @@ class PoliceSystem {
 
         const unit = new PoliceUnit(STATION_PARKING_PX.x, STATION_PARKING_PX.y, vehicle);
         unit.patrolling = false;
+
+        // Role assignment: at 3+ stars, spawn some roadblocks alongside chasers.
+        // Cap: 1 roadblock at 3 stars, 2 at 4–5 stars.
+        const roadblockMax = Math.min(2, Math.max(0, player.wantedLevel - 2));
+        const activeRoadblocks = this.units.filter(u => u.role === 'roadblock' && !u.windingDown).length;
+        const activeChasers = this.units.filter(u => u.role === 'chase' && !u.windingDown && !u.onFoot).length;
+        // Assign roadblock if we're under cap AND there's already at least one chaser
+        if (player.wantedLevel >= 3 && activeRoadblocks < roadblockMax && activeChasers >= 1) {
+            unit.role = 'roadblock';
+        } else {
+            unit.role = 'chase';
+        }
+
         this.units.push(unit);
     }
 
@@ -564,6 +736,6 @@ class PoliceSystem {
             ctx.restore();
         }
 
-        // helicopter is now a Vehicle in the vehicles array — drawn by engine.js
+        if (this.helicopter) this.helicopter.draw(ctx);
     }
 }

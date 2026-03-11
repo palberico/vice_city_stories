@@ -10,7 +10,7 @@ class Game {
         this.images = {};
         this.dayNight = { time: 8, speed: 0.02 }; // starts at 8:00 AM, 0.02 hours/sec (~20 min per full cycle)
         this.menuReady = false;
-        this.showGrid = true;
+        this.showGrid = false;
 
         // Systems
         this.camera = null;
@@ -88,8 +88,11 @@ class Game {
             'roads/parking/helipad_open',
             'roads/asphalt_blank',
             'roads/asphalt_line',
+            'roads/asphalt_sewer',
             'roads/asphalt_stop',
+            'roads/asphalt_stop_alt',
             'roads/asphalt_stop_line',
+            'roads/asphalt_stop_line_alt',
             'roads/asphalt_yellow_line',
             'roads/crosswalk',
             'roads/stoplight',
@@ -313,12 +316,12 @@ class Game {
             }
         }
 
-        // Spawn police helicopter parked on helipad at tile (34,28) — static until stolen or 5 stars
+        // Player-flyable helicopter parked on helipad
         {
-            const policeHeli = new Vehicle(34 * TILE + TILE / 2, 28 * TILE + TILE / 2, 'helicopter_police', this.images);
-            policeHeli.ai.active = false;
-            policeHeli.isHelipadParked = true;
-            this.vehicles.push(policeHeli);
+            const helipad = new Vehicle(34 * TILE + TILE / 2, 28 * TILE + TILE / 2, 'helicopter_police', this.images);
+            helipad.ai.active = false;
+            helipad.isHelipadParked = true;
+            this.vehicles.push(helipad);
         }
 
         // Parking lot cars — static, stay until player takes them
@@ -590,6 +593,27 @@ class Game {
                     }
                 }
                 if (hitAny) continue;
+
+                // Hit police helicopter
+                if (this.police.helicopter && this.police.helicopter.active && this.police.helicopter.alive && b.active) {
+                    const heli = this.police.helicopter;
+                    const heliBounds = { x: heli.x - 30, y: heli.y - 30, w: 60, h: 60 };
+                    if (Collision.aabb(b, heliBounds)) {
+                        if (b.weaponName === 'rpg') {
+                            this.explode(b.x, b.y, 80, 100, b.owner);
+                        } else {
+                            heli.health -= b.damage;
+                            this.particles.impact(b.x, b.y);
+                        }
+                        if (heli.health <= 0) {
+                            heli.alive = false;
+                            this.particles.explosion(heli.x, heli.y);
+                            this.audio.playExplosion();
+                        }
+                        b.active = false;
+                        continue;
+                    }
+                }
 
                 // Hit armored car (mission target — special hit counting)
                 if (this.missions && this.missions.armoredCar && b.active) {

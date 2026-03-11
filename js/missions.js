@@ -308,7 +308,7 @@ class MissionSystem {
         if (this.activeMission.id === 'the_armored_job' && this.armoredCar) {
             const escapeX = 13 * TILE;
             const escapeY = 13 * TILE;
-            if (this.armoredCar.x <= escapeX && this.armoredCar.y <= escapeY) {
+            if (this.armoredCar.x <= escapeX || this.armoredCar.y <= escapeY) {
                 this.failMission('The armored car escaped!', audio, vehicles);
                 return;
             }

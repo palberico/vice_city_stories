@@ -28,15 +28,29 @@ class HUD {
         ctx.textAlign = 'left';
         ctx.fillText('HP', barX - 22, barY + 11);
 
-        // Armor
-        if (player.armor > 0) {
+        // Stamina (shown while swimming or recovering)
+        if (player.isSwimming || player.stamina < player.maxStamina) {
+            const stRatio = player.stamina / player.maxStamina;
+            const stColor = stRatio > 0.5 ? '#00aaff' : stRatio > 0.2 ? '#0066cc' : '#ff4400';
             ctx.fillStyle = 'rgba(0,0,0,0.5)';
             ctx.fillRect(barX, barY - 18, 200, 14);
+            ctx.fillStyle = stColor;
+            ctx.fillRect(barX + 1, barY - 17, 198 * stRatio, 12);
+            ctx.fillStyle = '#88ccff';
+            ctx.font = 'bold 10px "Segoe UI", Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText('ST', barX - 22, barY - 7);
+        }
+
+        // Armor (always 36px above HP bar so it doesn't overlap stamina)
+        if (player.armor > 0) {
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(barX, barY - 36, 200, 14);
             ctx.fillStyle = '#4488cc';
-            ctx.fillRect(barX + 1, barY - 17, 198 * (player.armor / 100), 12);
+            ctx.fillRect(barX + 1, barY - 35, 198 * (player.armor / 100), 12);
             ctx.fillStyle = '#aaccff';
             ctx.font = 'bold 10px "Segoe UI", Arial';
-            ctx.fillText('AR', barX - 22, barY - 7);
+            ctx.fillText('AR', barX - 22, barY - 25);
         }
 
         // ---- Wanted Level Stars (top-right) ----

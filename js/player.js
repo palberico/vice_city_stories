@@ -24,6 +24,8 @@ class Player {
         this.respawnTimer = 0;
         this.enterCooldown = 0;
         this.isSwimming = false;
+        this.stamina = 100;
+        this.maxStamina = 100;
         this.arrested = false;
         this.arrestedLost = 0;
     }
@@ -124,14 +126,19 @@ class Player {
                 }
             }
 
-            // Swimming damage
+            // Swimming stamina drain; HP damage only after stamina is exhausted
             if (this.isSwimming) {
-                this.health -= 3 * dt;
-                if (this.health <= 0) {
-                    this.health = 0;
-                    this.alive = false;
-                    this.respawnTimer = 3;
+                this.stamina = Math.max(0, this.stamina - 20 * dt);
+                if (this.stamina <= 0) {
+                    this.health -= 5 * dt;
+                    if (this.health <= 0) {
+                        this.health = 0;
+                        this.alive = false;
+                        this.respawnTimer = 3;
+                    }
                 }
+            } else {
+                this.stamina = Math.min(this.maxStamina, this.stamina + 15 * dt);
             }
 
             // Enter vehicle
