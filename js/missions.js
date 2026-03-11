@@ -160,15 +160,18 @@ const MISSION_DATA = [
     {
         id: 'the_armored_job',
         name: 'The Armored Job',
-        description: 'Destroy the armored truck before it escapes!',
+        description: 'Meet Darnell — he\'s got work for you.',
         reward: 5000,
-        startTile: { x: 24, y: 34 },   // Center-W
+        startTile: { x: 24, y: 34 },
         available: true,
         steps: [
-            { type: 'go_to', text: 'Get to the SE to intercept the armored car', targetTile: { x: 68, y: 60 }, radius: 200 },
-            { type: 'shoot_armored_car', text: 'Shoot the armored car! (0/3 hits)' },
-            { type: 'lose_wanted', text: 'Lose the cops! (5 stars)' },
-            { type: 'drive_to', text: 'Lay low — get to the NW safehouse', targetTile: { x: 22, y: 20 }, radius: 100 }
+            { type: 'find_darnell',      text: 'Talk to Darnell, he has a job for you' },
+            { type: 'close_chat',        text: 'Talk to Darnell' },
+            { type: 'get_rpg',           text: 'Search the dumpster near the attorney\'s office (east side)' },
+            { type: 'shoot_armored_car', text: 'Take out the armored truck! (0/3 RPG hits)' },
+            { type: 'kill_guards',       text: 'Take out the guards! (2 remaining)' },
+            { type: 'lose_wanted',       text: 'Lose the police!' },
+            { type: 'drive_to',          text: 'Get to the NW safehouse', targetTile: { x: 22, y: 20 }, radius: 100 }
         ]
     }
 ];
@@ -186,6 +189,10 @@ class MissionSystem {
         this.timerActive = false;
         this.armoredCar = null;
         this.armoredCarHits = 0;
+        this.darnell = null;
+        this.chatBox = null;
+        this.guards = [];
+        this.rpgPickup = null;
         this.setupMarkers();
     }
 
@@ -223,26 +230,29 @@ class MissionSystem {
         }
     }
 
-    spawnArmoredCar(vehicles, images) {
-        // Spawn in SE corner on the last horizontal road (y=68) near the last vertical road (x=70)
-        const startX = 71 * TILE;
-        const startY = 69 * TILE;
+    _spawnArmoredTruck(vehicles, images) {
+        const startX = 79.5 * TILE;
+        const startY = 64.5 * TILE;
         const car = new Vehicle(startX, startY, 'armored', images);
-        car.ai.active = false; // we drive it ourselves with waypoints
+        car.ai.active = false;
         car.speed = 0;
-        car.angle = Math.PI; // face left initially
+        car.angle = Math.PI; // face west
         car.isArmoredTarget = true;
-        car.health = 999; // tough — we track hits separately
-        // Waypoint path: SE → SW along bottom road, then SW → NW up the west road
+        car.health = 999;
+        // Path: east edge → west to col 55, then north to row 29
         car._waypoints = [
-            { x: 11 * TILE, y: 69 * TILE },  // drive left to SW along bottom road
-            { x: 11 * TILE, y: 9 * TILE },   // then drive up to NW
+            { x: 55.5 * TILE, y: 64.5 * TILE },
+            { x: 55.5 * TILE, y: 29 * TILE },
         ];
         car._waypointIdx = 0;
-        car._armoredSpeed = 90; // pixels per second
+        car._armoredSpeed = 90;
         this.armoredCar = car;
         this.armoredCarHits = 0;
         vehicles.push(car);
+    }
+
+    spawnArmoredCar(vehicles, images) {
+        this._spawnArmoredTruck(vehicles, images);
     }
 
     removeArmoredCar(vehicles) {
@@ -254,32 +264,46 @@ class MissionSystem {
         }
     }
 
-    hitArmoredCar(bullet, particles, audio) {
+    hitArmoredCar(bullet, particles, audio, player) {
         if (!this.armoredCar || !this.armoredCar.isArmoredTarget) return false;
-        // Check collision
         if (!Collision.aabb(bullet, this.armoredCar.getBounds())) return false;
 
+        // Only RPG can damage the armored truck
+        if (bullet.weaponName !== 'rpg') {
+            this.showMessage('Bullets bounce off! Use the RPG!');
+            particles.impact(bullet.x, bullet.y);
+            bullet.active = false;
+            return true;
+        }
+
         this.armoredCarHits++;
-        particles.impact(bullet.x, bullet.y);
+        particles.explosion(bullet.x, bullet.y);
+        audio.playExplosion();
         bullet.active = false;
 
         if (this.armoredCarHits >= 3) {
-            // Blow it up!
+            // Destroy it and spawn guards
             particles.explosion(this.armoredCar.x, this.armoredCar.y);
-            audio.playExplosion();
             this.armoredCar.health = 0;
-            this.showMessage('The armored car is destroyed! MISSION COMPLETE!');
+            this._spawnGuards(this.armoredCar.x, this.armoredCar.y);
+            this.showMessage('Truck destroyed! Take out the guards!');
         } else {
-            this.showMessage(`Hit! (${this.armoredCarHits}/3)`);
-            // Update current step text
+            this.showMessage(`RPG hit! (${this.armoredCarHits}/3)`);
             if (this.activeMission && this.activeMission.id === 'the_armored_job') {
                 const step = this.activeMission.steps[this.currentStep];
                 if (step && step.type === 'shoot_armored_car') {
-                    step.text = `Shoot the armored car! (${this.armoredCarHits}/3 hits)`;
+                    step.text = `Take out the armored truck! (${this.armoredCarHits}/3 RPG hits)`;
                 }
             }
         }
         return true;
+    }
+
+    _spawnGuards(x, y) {
+        this.guards = [
+            { x: x - 48, y: y - 32, health: 100, alive: true, angle: 0, shootTimer: 0, activationDelay: 3 },
+            { x: x + 48, y: y + 32, health: 100, alive: true, angle: 0, shootTimer: 0, activationDelay: 3 },
+        ];
     }
 
     update(dt, player, audio, vehicles, images) {
@@ -304,16 +328,20 @@ class MissionSystem {
             this.failMission('The car was destroyed!', audio, vehicles);
             return;
         }
-        // Armored car escape check — if it reaches NW, mission fails
-        if (this.activeMission.id === 'the_armored_job' && this.armoredCar) {
-            const escapeX = 13 * TILE;
-            const escapeY = 13 * TILE;
-            if (this.armoredCar.x <= escapeX || this.armoredCar.y <= escapeY) {
-                this.failMission('The armored car escaped!', audio, vehicles);
+        if (this.activeMission.id === 'the_armored_job') {
+            // Darnell killed during intro steps
+            if (this.currentStep <= 1 && this.darnell && !this.darnell.alive) {
+                this.failMission('Darnell was killed!', audio, vehicles);
+                return;
+            }
+            // Truck reached the bank (exhausted its waypoints) — mission fails
+            if (this.armoredCar && this.armoredCar.health > 0 &&
+                    this.armoredCar._waypoints && this.armoredCar._waypointIdx >= this.armoredCar._waypoints.length) {
+                this.failMission('The armored truck reached the bank!', audio, vehicles);
                 return;
             }
         }
-        // Countdown timer — starts after the player completes step 0 (enter_vehicle) on timed missions
+        // Countdown timer
         if (this.activeMission.timeLimit && this.timerActive) {
             this.missionTimer -= dt;
             if (this.missionTimer <= 0) {
@@ -322,8 +350,9 @@ class MissionSystem {
             }
         }
 
-        // ── Armored car waypoint AI ──
-        if (this.activeMission.id === 'the_armored_job' && this.armoredCar && this.armoredCar.health > 0) {
+        // ── Armored truck waypoint AI (only active from step 2 onward) ──
+        if (this.activeMission.id === 'the_armored_job' && this.currentStep >= 2 &&
+                this.armoredCar && this.armoredCar.health > 0) {
             const car = this.armoredCar;
             if (car._waypoints && car._waypointIdx < car._waypoints.length) {
                 const wp = car._waypoints[car._waypointIdx];
@@ -331,7 +360,6 @@ class MissionSystem {
                 const dy = wp.y - car.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 if (dist < 40) {
-                    // Reached waypoint, advance to next
                     car._waypointIdx++;
                     if (car._waypointIdx < car._waypoints.length) {
                         const nwp = car._waypoints[car._waypointIdx];
@@ -345,6 +373,34 @@ class MissionSystem {
             }
         }
 
+        // ── Guard AI ──
+        if (this.guards && this.guards.length > 0) {
+            for (const guard of this.guards) {
+                if (!guard.alive) continue;
+                // Activation delay — guards scatter first, then attack
+                if (guard.activationDelay > 0) {
+                    guard.activationDelay -= dt;
+                    continue;
+                }
+                const gdx = player.x - guard.x;
+                const gdy = player.y - guard.y;
+                const gdist = Math.sqrt(gdx * gdx + gdy * gdy);
+                guard.angle = Math.atan2(gdy, gdx);
+                if (gdist > 80) {
+                    guard.x += Math.cos(guard.angle) * 60 * dt;
+                    guard.y += Math.sin(guard.angle) * 60 * dt;
+                }
+                guard.shootTimer = (guard.shootTimer || 0) - dt;
+                if (guard.shootTimer <= 0 && gdist < 300) {
+                    guard.shootTimer = 1.2;
+                    const spread = (Math.random() - 0.5) * 0.3;
+                    const bAngle = guard.angle + spread;
+                    const bullet = new Bullet(guard.x, guard.y, bAngle, 600, 15, 'guard', 'pistol');
+                    player.weapons.bullets.push(bullet);
+                }
+            }
+        }
+
         // ── Step progression ──
         const step = this.activeMission.steps[this.currentStep];
         if (!step) {
@@ -354,6 +410,38 @@ class MissionSystem {
 
         let completed = false;
         switch (step.type) {
+            case 'find_darnell':
+                if (!player.inVehicle && this.darnell && this.darnell.alive) {
+                    const dd = Collision.dist(player.x, player.y, this.darnell.x, this.darnell.y);
+                    if (dd < 96) {
+                        // Open chatbox
+                        this.chatBox = {
+                            active: true,
+                            lines: [
+                                'An armored truck is delivering some loot to the bank, should be an easy take.',
+                                'I left something for you near the dumpster east of my attorney\'s office that will help.',
+                                'Get a car and get moving.'
+                            ]
+                        };
+                        completed = true;
+                    }
+                }
+                break;
+            case 'close_chat':
+                // Engine handles E key to set chatBox.active = false
+                if (this.chatBox && this.chatBox.active) break; // still open
+                // Chatbox closed — count down 3 seconds before spawning truck
+                if (this.truckSpawnDelay === 0) this.truckSpawnDelay = 3;
+                this.truckSpawnDelay -= dt;
+                if (this.truckSpawnDelay <= 0) {
+                    this._spawnArmoredTruck(vehicles, images);
+                    this.rpgPickup = { x: 79.5 * TILE, y: 17.5 * TILE, active: true };
+                    completed = true;
+                }
+                break;
+            case 'get_rpg':
+                if (this.rpgPickup && !this.rpgPickup.active) completed = true;
+                break;
             case 'go_to':
                 if (step.targetTile) {
                     const tx = step.targetTile.x * TILE, ty = step.targetTile.y * TILE;
@@ -382,11 +470,18 @@ class MissionSystem {
                 }
                 break;
             case 'shoot_armored_car':
-                // Completed when 3 hits registered (handled by hitArmoredCar)
-                if (this.armoredCarHits >= 3) {
+                if (this.armoredCarHits >= 3) completed = true;
+                break;
+            case 'kill_guards':
+                if (this.guards.length > 0 && this.guards.every(g => !g.alive)) {
                     completed = true;
                     player.wantedLevel = 5;
                     player.wantedDecayTimer = 0;
+                }
+                // Keep step text updated
+                {
+                    const alive = this.guards.filter(g => g.alive).length;
+                    step.text = `Take out the guards! (${alive} remaining)`;
                 }
                 break;
             case 'lose_wanted':
@@ -396,7 +491,6 @@ class MissionSystem {
 
         if (completed) {
             this.currentStep++;
-            // Start countdown timer after entering a vehicle (step 0 → 1) on timed missions
             if (this.activeMission.timeLimit && this.currentStep === 1 && !this.timerActive) {
                 this.timerActive = true;
                 this.missionTimer = this.activeMission.timeLimit;
@@ -421,8 +515,23 @@ class MissionSystem {
             this.spawnRepoVehicle(vehicles, images);
         }
         if (this.activeMission.id === 'the_armored_job') {
-            this.spawnArmoredCar(vehicles, images);
+            // Spawn Darnell as a mission NPC (not in NPCManager)
+            this.darnell = { x: 9.5 * TILE, y: 16.5 * TILE, alive: true };
+            this.chatBox = null;
+            this.guards = [];
+            this.rpgPickup = null;
+            this.armoredCar = null;
+            this.armoredCarHits = 0;
+            this.truckSpawnDelay = 0;
         }
+    }
+
+    _cleanupArmoredJob(vehicles) {
+        this.removeArmoredCar(vehicles);
+        this.darnell = null;
+        this.chatBox = null;
+        this.guards = [];
+        this.rpgPickup = null;
     }
 
     completeMission(player, audio, vehicles) {
@@ -430,14 +539,13 @@ class MissionSystem {
         this.showMessage(`MISSION COMPLETE: ${this.activeMission.name}! +$${this.activeMission.reward}`);
 
         if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
-        if (this.activeMission.id === 'the_armored_job') this.removeArmoredCar(vehicles);
+        if (this.activeMission.id === 'the_armored_job') this._cleanupArmoredJob(vehicles);
 
         this.activeMission.completed = true;
         this.activeMission = null;
         this.currentStep = 0;
         this.timerActive = false;
 
-        // Unlock the next locked mission from the pool
         const next = this.missions.find(m => !m.completed && !m.available);
         if (next) next.available = true;
 
@@ -449,7 +557,7 @@ class MissionSystem {
         const name = this.activeMission.name;
         this.showMessage(`MISSION FAILED: ${name} — ${reason}`);
         if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
-        if (this.activeMission.id === 'the_armored_job') this.removeArmoredCar(vehicles);
+        if (this.activeMission.id === 'the_armored_job') this._cleanupArmoredJob(vehicles);
         this.activeMission = null;
         this.currentStep = 0;
         this.timerActive = false;
@@ -471,7 +579,14 @@ class MissionSystem {
     getTargetPosition() {
         if (!this.activeMission) return null;
         const step = this.activeMission.steps[this.currentStep];
-        if (step && step.targetTile) {
+        if (!step) return null;
+        if (step.type === 'find_darnell' && this.darnell && this.darnell.alive) {
+            return { x: this.darnell.x, y: this.darnell.y };
+        }
+        if (step.type === 'get_rpg' && this.rpgPickup && this.rpgPickup.active) {
+            return { x: this.rpgPickup.x, y: this.rpgPickup.y };
+        }
+        if (step.targetTile) {
             return { x: step.targetTile.x * TILE, y: step.targetTile.y * TILE };
         }
         return null;
@@ -480,6 +595,58 @@ class MissionSystem {
     getMissionTimer() {
         if (!this.timerActive) return null;
         return Math.max(0, this.missionTimer);
+    }
+
+    drawMissionEntities(ctx, images, player) {
+        // Draw Darnell NPC
+        if (this.darnell && this.darnell.alive) {
+            const d = this.darnell;
+            const img = images['npc_casual_front'];
+            ctx.save();
+            if (img) {
+                ctx.drawImage(img, d.x - 12, d.y - 18, 24, 36);
+            } else {
+                ctx.fillStyle = '#ff8800';
+                ctx.fillRect(d.x - 10, d.y - 16, 20, 32);
+            }
+            // Name tag
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(d.x - 28, d.y - 34, 56, 14);
+            ctx.fillStyle = '#ff8800';
+            ctx.font = 'bold 10px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('DARNELL', d.x, d.y - 33);
+            ctx.restore();
+        }
+
+        // RPG pickup marker (drawn here so it appears above tile sprites)
+        if (this.rpgPickup && this.rpgPickup.active) {
+            const pulse = Math.abs(Math.sin(Date.now() / 300));
+            ctx.save();
+            ctx.strokeStyle = `rgba(255, 80, 0, ${0.6 + 0.4 * pulse})`;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(this.rpgPickup.x, this.rpgPickup.y, 24 + pulse * 6, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Draw guards
+        for (const guard of this.guards) {
+            if (!guard.alive) continue;
+            ctx.save();
+            // Body
+            ctx.fillStyle = '#224488';
+            ctx.fillRect(guard.x - 10, guard.y - 14, 20, 28);
+            // Health bar
+            const ratio = guard.health / 100;
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(guard.x - 16, guard.y - 22, 32, 6);
+            ctx.fillStyle = ratio > 0.5 ? '#00cc44' : ratio > 0.25 ? '#ccaa00' : '#cc2200';
+            ctx.fillRect(guard.x - 16, guard.y - 22, 32 * ratio, 6);
+            ctx.restore();
+        }
     }
 
     drawMarkers(ctx) {
@@ -542,6 +709,18 @@ class MissionSystem {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('REPO', this.repoVehicle.x, this.repoVehicle.y - this.repoVehicle.h / 2 - 15);
+            ctx.restore();
+        }
+
+        // Darnell NPC marker
+        if (this.darnell && this.darnell.alive) {
+            const pulse = Math.sin(Date.now() / 400) * 4;
+            ctx.save();
+            ctx.strokeStyle = '#ff8800';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(this.darnell.x, this.darnell.y, 22 + pulse, 0, Math.PI * 2);
+            ctx.stroke();
             ctx.restore();
         }
 

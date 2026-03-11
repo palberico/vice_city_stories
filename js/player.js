@@ -220,6 +220,7 @@ class Player {
         this.x = this.inVehicle.x + Math.cos(this.inVehicle.angle + Math.PI / 2) * 40;
         this.y = this.inVehicle.y + Math.sin(this.inVehicle.angle + Math.PI / 2) * 40;
         this.inVehicle.driver = null;
+        this.inVehicle.ai.active = false;
         this.inVehicle.speed *= 0.3;
         this.inVehicle.wasPlayerDriven = true;
         this.inVehicle.abandonedTimer = 0;

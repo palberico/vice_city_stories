@@ -76,7 +76,7 @@ class Game {
     async loadAssets() {
         const assetList = [
             'player', 'car_sports', 'car_sedan', 'car_police', 'motorcycle', 'logo',
-            'helicopter', 'helicopter_police', 'propeller', 'armored_car',
+            'helicopter', 'helicopter_police', 'propeller', 'armored_car', 'npc_casual_front',
             'helicopter_red', 'helicopter_green', 'helicopter_blue',
             'car_sports_red', 'car_sports_blue', 'car_sports_green', 'car_sports_white',
             'car_sedan_red', 'car_sedan_blue', 'car_sedan_green', 'car_sedan_white',
@@ -89,6 +89,7 @@ class Game {
             'roads/asphalt_blank',
             'roads/asphalt_line',
             'roads/asphalt_sewer',
+            'roads/asphalt_closed',
             'roads/asphalt_stop',
             'roads/asphalt_stop_alt',
             'roads/asphalt_stop_line',
@@ -487,6 +488,12 @@ class Game {
         // Helipad open/close toggle
         this.world.updateHelipad(dt);
 
+        // Chatbox close (consume E before player uses it for enter/exit vehicle)
+        if (this.missions.chatBox && this.missions.chatBox.active && Input.isDown('e')) {
+            Input.keys['e'] = false;
+            this.missions.chatBox.active = false;
+        }
+
         // Bank robbery check (before player update so E key can be consumed first)
         this.updateBank(dt);
 
@@ -539,6 +546,14 @@ class Game {
         // Update missions
         this.missions.update(dt, this.player, this.audio, this.vehicles, this.images);
 
+        // Vehicle ran over Darnell
+        if (this.player.inVehicle && this.missions.darnell && this.missions.darnell.alive) {
+            if (Collision.dist(this.player.x, this.player.y, this.missions.darnell.x, this.missions.darnell.y) < 32) {
+                this.missions.darnell.alive = false;
+                this.particles.blood(this.missions.darnell.x, this.missions.darnell.y);
+            }
+        }
+
         // Update particles
         this.particles.update(dt);
 
@@ -575,6 +590,23 @@ class Game {
                 continue;
             }
 
+            if (b.owner === 'guard') {
+                // Mission guard bullets hit the player
+                if (this.player.alive) {
+                    const target = this.player.inVehicle || this.player;
+                    if (Collision.aabb(b, target.getBounds())) {
+                        if (this.player.inVehicle) {
+                            this.player.inVehicle.health -= b.damage;
+                        } else {
+                            this.player.takeDamage(b.damage);
+                        }
+                        this.particles.impact(b.x, b.y);
+                        b.active = false;
+                    }
+                }
+                continue;
+            }
+
             if (b.owner === 'player') {
                 let hitAny = false;
                 // Hit NPCs
@@ -590,6 +622,18 @@ class Game {
                         b.active = false;
                         hitAny = true;
                         break;
+                    }
+                }
+                if (hitAny) continue;
+
+                // Hit Darnell (mission NPC)
+                if (this.missions.darnell && this.missions.darnell.alive && b.active) {
+                    const d = this.missions.darnell;
+                    if (Collision.aabb(b, { x: d.x - 9, y: d.y - 9, w: 18, h: 18 })) {
+                        d.alive = false;
+                        this.particles.blood(d.x, d.y);
+                        b.active = false;
+                        hitAny = true;
                     }
                 }
                 if (hitAny) continue;
@@ -617,10 +661,26 @@ class Game {
 
                 // Hit armored car (mission target — special hit counting)
                 if (this.missions && this.missions.armoredCar && b.active) {
-                    if (this.missions.hitArmoredCar(b, this.particles, this.audio)) {
+                    if (this.missions.hitArmoredCar(b, this.particles, this.audio, this.player)) {
                         continue;
                     }
                 }
+
+                // Hit mission guards
+                if (this.missions.guards && this.missions.guards.length > 0 && b.active) {
+                    for (const guard of this.missions.guards) {
+                        if (!guard.alive) continue;
+                        if (Collision.aabb(b, { x: guard.x - 8, y: guard.y - 8, w: 16, h: 16 })) {
+                            guard.health -= b.damage;
+                            this.particles.impact(b.x, b.y);
+                            if (guard.health <= 0) guard.alive = false;
+                            b.active = false;
+                            hitAny = true;
+                            break;
+                        }
+                    }
+                }
+                if (hitAny) continue;
 
                 // Hit Vehicles
                 for (const v of this.vehicles) {
@@ -652,6 +712,17 @@ class Game {
                 this.hud.notify(`Found ${WEAPONS[p.weapon].name}! (${p.ammo} rounds)`);
                 this.audio.playPickup();
                 this.worldPickups.splice(i, 1);
+            }
+        }
+
+        // Mission RPG pickup (The Armored Job dumpster)
+        if (this.missions.rpgPickup && this.missions.rpgPickup.active && !this.player.inVehicle) {
+            const p = this.missions.rpgPickup;
+            if (Collision.dist(this.player.x, this.player.y, p.x, p.y) < 48) {
+                this.player.weapons.pickupWeapon('rpg', 3);
+                this.hud.notify('RPG found in the dumpster! (3 rounds)');
+                this.audio.playPickup();
+                p.active = false;
             }
         }
 
@@ -815,6 +886,9 @@ class Game {
 
         // Draw NPCs
         this.npcManager.draw(ctx, this.camera);
+
+        // Draw mission entities (Darnell, guards, RPG pickup)
+        this.missions.drawMissionEntities(ctx, this.images, this.player);
 
         // Draw player
         this.player.draw(ctx);

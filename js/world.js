@@ -482,8 +482,10 @@ class World {
                 color: '#555555', height: 1,
                 isParkinglot: true, noCollision: true
             });
-            // Walkable rows inside the lot (entry/exit lane)
+            // Walkable rows inside the lot (entry/exit lane + dumpster area)
             for (let tx = 76; tx <= 79; tx++) {
+                this.tiles[17][tx] = T.ROAD;
+                this.tiles[18][tx] = T.ROAD;
                 this.tiles[19][tx] = T.ROAD;
                 this.tiles[20][tx] = T.ROAD;
             }
@@ -717,6 +719,15 @@ class World {
             }
         }
         this.tileSprites.set('26,24', 'roads/asphalt_sewer');
+        this.tileSprites.set('10,7', 'roads/asphalt_closed');
+        this.tileSprites.set('11,7', 'roads/asphalt_closed');
+        this.tileSprites.set('12,7', 'roads/asphalt_closed');
+        this.tileSprites.set('13,7', 'roads/asphalt_closed');
+        for (let ty = 0; ty < 7; ty++) {
+            for (let tx = 10; tx <= 13; tx++) {
+                this.tileSprites.set(`${tx},${ty}`, 'roads/asphalt_blank');
+            }
+        }
 
         // Multi-tile sprites — drawn as a single image spanning multiple tiles
         // SW corner at (33,29) → NW corner at (33,27), 3×3 tiles

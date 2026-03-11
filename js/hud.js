@@ -189,6 +189,30 @@ class HUD {
             ctx.fillText(n.text, W / 2, 118 + i * 30);
         }
 
+        // ---- Chat Box (mission dialogue) ----
+        if (missions.chatBox && missions.chatBox.active) {
+            const bw = 620, bh = 140, bx = W / 2 - bw / 2, by = H - bh - 20;
+            ctx.fillStyle = 'rgba(10,10,20,0.92)';
+            ctx.fillRect(bx, by, bw, bh);
+            ctx.strokeStyle = '#ff8800';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(bx, by, bw, bh);
+            ctx.fillStyle = '#ff8800';
+            ctx.font = 'bold 13px "Segoe UI", Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText('DARNELL:', bx + 18, by + 24);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '12px "Segoe UI", Arial';
+            const lines = missions.chatBox.lines || [];
+            for (let i = 0; i < lines.length; i++) {
+                ctx.fillText(lines[i], bx + 18, by + 46 + i * 22);
+            }
+            ctx.fillStyle = 'rgba(255,255,255,0.45)';
+            ctx.font = '11px "Segoe UI", Arial';
+            ctx.textAlign = 'right';
+            ctx.fillText('[E] Close', bx + bw - 14, by + bh - 10);
+        }
+
         // ---- Minimap ----
         this.minimap.draw(ctx, H, player, world, vehicles, missions, police, stores);
 
