@@ -27,7 +27,7 @@ const TILE_COLORS = {
 
 // Special fixed locations — placed inside city blocks between road grid lines
 const HOSPITAL_PX = { x: 45 * TILE + TILE / 2, y: 46 * TILE + TILE / 2 }; // center of 5x5 hospital (HBX+2.5, HBY+2.5)
-const STATION_PX  = { x: 34 * TILE + TILE / 2, y: 32 * TILE + TILE / 2 }; // center of 5x5 police station
+const STATION_PX = { x: 34 * TILE + TILE / 2, y: 32 * TILE + TILE / 2 }; // center of 5x5 police station
 const STATION_PARKING_PX = { x: 34 * TILE + TILE / 2, y: 35 * TILE + TILE / 2 }; // one tile south of station
 // Designated patrol car spawn spots — one car per tile, checked before spawning
 const STATION_PATROL_SPOTS = [
@@ -35,9 +35,9 @@ const STATION_PATROL_SPOTS = [
     { tx: 29, ty: 31 }, { tx: 30, ty: 31 }, { tx: 31, ty: 31 },
 ];
 const PAY_SPRAY_PX = { x: 16.5 * TILE, y: 63 * TILE };
-const HEAL_PX      = { x: 45 * TILE + TILE / 2, y: 49 * TILE + TILE / 2 }; // one tile south of hospital
-const LAWYER_PX    = { x: 73 * TILE + TILE / 2, y: 19 * TILE }; // center of 5x4 lawyer building
-const BANK_PX      = { x: 56 * TILE, y: 29 * TILE }; // center of 4-tile robbery zone (SW corner of tile 56,28)
+const HEAL_PX = { x: 45 * TILE + TILE / 2, y: 49 * TILE + TILE / 2 }; // one tile south of hospital
+const LAWYER_PX = { x: 73 * TILE + TILE / 2, y: 19 * TILE }; // center of 5x4 lawyer building
+const BANK_PX = { x: 56 * TILE, y: 29 * TILE }; // center of 4-tile robbery zone (SW corner of tile 56,28)
 
 class World {
     constructor() {
@@ -514,6 +514,106 @@ class World {
             });
         }
 
+        // ---- Safe House - SW corner at tile (15,6), 3x3 ----
+        {
+            const SHBX = 15, SHBW = 3;
+            const SHBY = 4, SHBH = 3;
+            // Filter out overlapping random buildings just in case
+            this.buildings = this.buildings.filter(b => {
+                const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
+                const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
+                return !(br >= SHBX && bl < SHBX + SHBW && bb >= SHBY && bt < SHBY + SHBH);
+            });
+            // Mark tiles as building
+            for (let ty = SHBY; ty < SHBY + SHBH; ty++) {
+                for (let tx = SHBX; tx < SHBX + SHBW; tx++) {
+                    this.tiles[ty][tx] = T.BUILDING;
+                }
+            }
+            this.buildings.push({
+                x: SHBX * TILE, y: SHBY * TILE,
+                w: SHBW * TILE, h: SHBH * TILE,
+                color: '#8b4513', height: 40,
+                windows: true, roofColor: '#5c4033',
+                isSafeHouse: true
+            });
+        }
+
+        // ---- House 1 - section starting at 20,4, 3x3 ----
+        {
+            const H1BX = 20, H1BW = 3;
+            const H1BY = 4, H1BH = 3;
+            // Filter out overlapping random buildings just in case
+            this.buildings = this.buildings.filter(b => {
+                const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
+                const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
+                return !(br >= H1BX && bl < H1BX + H1BW && bb >= H1BY && bt < H1BY + H1BH);
+            });
+            // Mark tiles as building
+            for (let ty = H1BY; ty < H1BY + H1BH; ty++) {
+                for (let tx = H1BX; tx < H1BX + H1BW; tx++) {
+                    this.tiles[ty][tx] = T.BUILDING;
+                }
+            }
+            this.buildings.push({
+                x: H1BX * TILE, y: H1BY * TILE,
+                w: H1BW * TILE, h: H1BH * TILE,
+                color: '#654321', height: 40,
+                windows: true, roofColor: '#3d2514',
+                isHouse1: true
+            });
+        }
+
+        // ---- House 2 - section starting at 15,0, 3x3 ----
+        {
+            const H2BX = 15, H2BW = 3;
+            const H2BY = 0, H2BH = 3;
+            // Filter out overlapping random buildings just in case
+            this.buildings = this.buildings.filter(b => {
+                const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
+                const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
+                return !(br >= H2BX && bl < H2BX + H2BW && bb >= H2BY && bt < H2BY + H2BH);
+            });
+            // Mark tiles as building
+            for (let ty = H2BY; ty < H2BY + H2BH; ty++) {
+                for (let tx = H2BX; tx < H2BX + H2BW; tx++) {
+                    this.tiles[ty][tx] = T.BUILDING;
+                }
+            }
+            this.buildings.push({
+                x: H2BX * TILE, y: H2BY * TILE,
+                w: H2BW * TILE, h: H2BH * TILE,
+                color: '#654321', height: 40,
+                windows: true, roofColor: '#3d2514',
+                isHouse2: true
+            });
+        }
+
+        // ---- House 3 - section starting at 20,0, 3x3 ----
+        {
+            const H3BX = 20, H3BW = 3;
+            const H3BY = 0, H3BH = 3;
+            // Filter out overlapping random buildings just in case
+            this.buildings = this.buildings.filter(b => {
+                const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
+                const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
+                return !(br >= H3BX && bl < H3BX + H3BW && bb >= H3BY && bt < H3BY + H3BH);
+            });
+            // Mark tiles as building
+            for (let ty = H3BY; ty < H3BY + H3BH; ty++) {
+                for (let tx = H3BX; tx < H3BX + H3BW; tx++) {
+                    this.tiles[ty][tx] = T.BUILDING;
+                }
+            }
+            this.buildings.push({
+                x: H3BX * TILE, y: H3BY * TILE,
+                w: H3BW * TILE, h: H3BH * TILE,
+                color: '#654321', height: 40,
+                windows: true, roofColor: '#3d2514',
+                isHouse3: true
+            });
+        }
+
         // Spawn points on sidewalks, parks, and sand
         for (let y = 5; y < WORLD_H - 6; y++) {
             for (let x = 7; x < WORLD_W - 2; x++) {
@@ -572,6 +672,26 @@ class World {
 
         // Tile sprite overlays — walkable tiles with a custom sprite drawn on top
         this.tileSprites = new Map([
+            ['15,3', 'landscape/grass2'],
+            ['16,3', 'landscape/grass2'],
+            ['17,3', 'landscape/grass2'],
+            ['18,0', 'landscape/grass2'],
+            ['19,0', 'landscape/grass2'],
+            ['18,1', 'landscape/grass2'],
+            ['19,1', 'landscape/grass2'],
+            ['18,2', 'landscape/grass2'],
+            ['19,2', 'landscape/grass2'],
+            ['18,3', 'landscape/grass2'],
+            ['18,4', 'landscape/driveway2'],
+            ['18,5', 'landscape/driveway1'],
+            ['18,6', 'landscape/driveway1'],
+            ['19,4', 'landscape/driveway2'],
+            ['19,5', 'landscape/driveway1'],
+            ['19,6', 'landscape/driveway1'],
+            ['19,3', 'landscape/grass2'],
+            ['20,3', { key: 'landscape/driveway2', rot: -Math.PI / 2 }],
+            ['21,3', { key: 'landscape/driveway1', rot: -Math.PI / 2 }],
+            ['22,3', { key: 'landscape/driveway1', rot: -Math.PI / 2 }],
             ['29,33', 'roads/parking/police_parking'],
             ['30,33', 'roads/parking/police_parking'],
             ['31,33', 'roads/parking/police_parking'],
@@ -604,14 +724,14 @@ class World {
                 if (this.tiles[ty] && this.tiles[ty][tx] === T.ROAD)
                     this.tileSprites.set(`${tx},${ty}`, val);
             };
-            const LINE_E  = { key: 'roads/asphalt_line',        rot:  Math.PI / 2 };
-            const LINE_W  = { key: 'roads/asphalt_line',        rot: -Math.PI / 2 };
-            const STOP_E  = { key: 'roads/asphalt_stop',        rot:  Math.PI / 2 };
-            const STOP_W  = { key: 'roads/asphalt_stop',        rot: -Math.PI / 2 };
-            const SLINE_E = { key: 'roads/asphalt_stop_line',   rot:  Math.PI / 2 };
-            const SLINE_W = { key: 'roads/asphalt_stop_line',   rot: -Math.PI / 2 };
+            const LINE_E = { key: 'roads/asphalt_line', rot: Math.PI / 2 };
+            const LINE_W = { key: 'roads/asphalt_line', rot: -Math.PI / 2 };
+            const STOP_E = { key: 'roads/asphalt_stop', rot: Math.PI / 2 };
+            const STOP_W = { key: 'roads/asphalt_stop', rot: -Math.PI / 2 };
+            const SLINE_E = { key: 'roads/asphalt_stop_line', rot: Math.PI / 2 };
+            const SLINE_W = { key: 'roads/asphalt_stop_line', rot: -Math.PI / 2 };
             const YLINE_E = { key: 'roads/asphalt_yellow_line', rot: -Math.PI / 2 };
-            const YLINE_W = { key: 'roads/asphalt_yellow_line', rot:  Math.PI / 2 };
+            const YLINE_W = { key: 'roads/asphalt_yellow_line', rot: Math.PI / 2 };
 
             for (const hy of hRoads) {
                 for (let vi = 0; vi < vRoads.length - 1; vi++) {
@@ -626,14 +746,14 @@ class World {
                     }
                     // Lane markings between the crosswalks
                     const startX = crossL + 1;
-                    const endX   = crossR - 1;
+                    const endX = crossR - 1;
                     for (let x = startX; x <= endX; x++) {
-                        const isLeft  = x === startX;
+                        const isLeft = x === startX;
                         const isRight = x === endX;
-                        setRoad(x, hy,     isLeft  ? STOP_E  : LINE_E);
-                        setRoad(x, hy + 1, isLeft  ? SLINE_E : isRight ? 'roads/asphalt_blank' : YLINE_E);
-                        setRoad(x, hy + 2, isRight ? SLINE_W : isLeft  ? 'roads/asphalt_blank' : YLINE_W);
-                        setRoad(x, hy + 3, isRight ? STOP_W  : LINE_W);
+                        setRoad(x, hy, isLeft ? STOP_E : LINE_E);
+                        setRoad(x, hy + 1, isLeft ? SLINE_E : isRight ? 'roads/asphalt_blank' : YLINE_E);
+                        setRoad(x, hy + 2, isRight ? SLINE_W : isLeft ? 'roads/asphalt_blank' : YLINE_W);
+                        setRoad(x, hy + 3, isRight ? STOP_W : LINE_W);
                     }
                 }
             }
@@ -648,15 +768,15 @@ class World {
                 if (this.tiles[ty] && this.tiles[ty][tx] === T.ROAD)
                     this.tileSprites.set(`${tx},${ty}`, val);
             };
-            const LINE_S  = { key: 'roads/asphalt_line',        rot: 0 };
-            const LINE_N  = { key: 'roads/asphalt_line',        rot: Math.PI };
-            const STOP_S  = { key: 'roads/asphalt_stop_alt',      ox: 1 };
-            const STOP_N  = { key: 'roads/asphalt_stop_alt',      rot: Math.PI };
+            const LINE_S = { key: 'roads/asphalt_line', rot: 0 };
+            const LINE_N = { key: 'roads/asphalt_line', rot: Math.PI };
+            const STOP_S = { key: 'roads/asphalt_stop_alt', ox: 1 };
+            const STOP_N = { key: 'roads/asphalt_stop_alt', rot: Math.PI };
             const SLINE_S = { key: 'roads/asphalt_stop_line_alt' };
             const SLINE_N = { key: 'roads/asphalt_stop_line_alt', rot: Math.PI };
             const YLINE_S = { key: 'roads/asphalt_yellow_line', rot: Math.PI };
             const YLINE_N = { key: 'roads/asphalt_yellow_line', rot: 0 };
-            const CW_NS   = { key: 'roads/crosswalk',           rot: Math.PI / 2 };
+            const CW_NS = { key: 'roads/crosswalk', rot: Math.PI / 2 };
 
             for (const vx of vRoads) {
                 for (let hi = 0; hi < hRoads.length - 1; hi++) {
@@ -671,14 +791,14 @@ class World {
                     }
                     // Lane markings between the crosswalks
                     const startY = crossT + 1;
-                    const endY   = crossB - 1;
+                    const endY = crossB - 1;
                     for (let y = startY; y <= endY; y++) {
-                        const isTop    = y === startY;
+                        const isTop = y === startY;
                         const isBottom = y === endY;
-                        setRoad(vx,     y, isTop    ? STOP_S  : LINE_S);
-                        setRoad(vx + 1, y, isTop    ? SLINE_S : isBottom ? 'roads/asphalt_blank' : YLINE_S);
-                        setRoad(vx + 2, y, isBottom ? SLINE_N : isTop    ? 'roads/asphalt_blank' : YLINE_N);
-                        setRoad(vx + 3, y, isBottom ? STOP_N  : LINE_N);
+                        setRoad(vx, y, isTop ? STOP_S : LINE_S);
+                        setRoad(vx + 1, y, isTop ? SLINE_S : isBottom ? 'roads/asphalt_blank' : YLINE_S);
+                        setRoad(vx + 2, y, isBottom ? SLINE_N : isTop ? 'roads/asphalt_blank' : YLINE_N);
+                        setRoad(vx + 3, y, isBottom ? STOP_N : LINE_N);
                     }
                 }
             }
@@ -757,7 +877,7 @@ class World {
         };
 
         for (const b of this.buildings) {
-            if (!b.isHospital && !b.isPoliceStation && !b.isBank && !b.isLawyer && !b.isBuilding1 && !b.isBuilding2) continue;
+            if (!b.isHospital && !b.isPoliceStation && !b.isBank && !b.isLawyer && !b.isBuilding1 && !b.isBuilding2 && !b.isSafeHouse && !b.isHouse1 && !b.isHouse2 && !b.isHouse3) continue;
             const bx1 = Math.round(b.x / TILE);
             const by1 = Math.round(b.y / TILE);
             const bx2 = bx1 + Math.round(b.w / TILE) - 1;
@@ -768,41 +888,41 @@ class World {
             const midX = Math.floor((bx1 + bx2) / 2);
             const midY = Math.floor((by1 + by2) / 2);
 
-            const leftX  = findSW(bx1 - 1, midY,  -1,  0);
-            const rightX = findSW(bx2 + 1, midY,   1,  0);
-            const topY   = findSW(midX,  by1 - 1,  0, -1);
-            const botY   = findSW(midX,  by2 + 1,  0,  1);
+            const leftX = findSW(bx1 - 1, midY, -1, 0);
+            const rightX = findSW(bx2 + 1, midY, 1, 0);
+            const topY = findSW(midX, by1 - 1, 0, -1);
+            const botY = findSW(midX, by2 + 1, 0, 1);
 
             // Place each side independently — skip sides with no sidewalk rather than the whole building
             const hasL = leftX >= 0, hasR = rightX >= 0, hasT = topY >= 0, hasB = botY >= 0;
 
             // Corners (only where both adjacent sides exist)
-            if (hasL && hasT) set(leftX,  topY, 'sidewalk/corner', 0);
+            if (hasL && hasT) set(leftX, topY, 'sidewalk/corner', 0);
             if (hasR && hasT) set(rightX, topY, 'sidewalk/corner', Math.PI / 2);
             if (hasR && hasB) set(rightX, botY, 'sidewalk/corner', Math.PI);
-            if (hasL && hasB) set(leftX,  botY, 'sidewalk/corner', -Math.PI / 2);
+            if (hasL && hasB) set(leftX, botY, 'sidewalk/corner', -Math.PI / 2);
             // Top edge
             if (hasT) {
-                const tLeft  = hasL ? leftX  + 1 : bx1;
-                const tRight = hasR ? rightX     : bx2 + 1;
+                const tLeft = hasL ? leftX + 1 : bx1;
+                const tRight = hasR ? rightX : bx2 + 1;
                 for (let tx = tLeft; tx < tRight; tx++) set(tx, topY, 'sidewalk/sidewalk_plain', 0);
             }
             // Bottom edge
             if (hasB) {
-                const tLeft  = hasL ? leftX  + 1 : bx1;
-                const tRight = hasR ? rightX     : bx2 + 1;
+                const tLeft = hasL ? leftX + 1 : bx1;
+                const tRight = hasR ? rightX : bx2 + 1;
                 for (let tx = tLeft; tx < tRight; tx++) set(tx, botY, 'sidewalk/sidewalk_plain', Math.PI);
             }
             // Left edge
             if (hasL) {
                 const tTop = hasT ? topY + 1 : by1;
-                const tBot = hasB ? botY     : by2 + 1;
+                const tBot = hasB ? botY : by2 + 1;
                 for (let ty = tTop; ty < tBot; ty++) set(leftX, ty, 'sidewalk/sidewalk_plain', -Math.PI / 2);
             }
             // Right edge
             if (hasR) {
                 const tTop = hasT ? topY + 1 : by1;
-                const tBot = hasB ? botY     : by2 + 1;
+                const tBot = hasB ? botY : by2 + 1;
                 for (let ty = tTop; ty < tBot; ty++) set(rightX, ty, 'sidewalk/sidewalk_plain', Math.PI / 2);
             }
         }
@@ -890,8 +1010,8 @@ class World {
                     if (entry) {
                         const spriteKey = typeof entry === 'string' ? entry : entry.key;
                         const rot = typeof entry === 'string' ? 0 : (entry.rot || 0);
-                        const ox  = typeof entry === 'string' ? 0 : (entry.ox  || 0);
-                        const oy  = typeof entry === 'string' ? 0 : (entry.oy  || 0);
+                        const ox = typeof entry === 'string' ? 0 : (entry.ox || 0);
+                        const oy = typeof entry === 'string' ? 0 : (entry.oy || 0);
                         const img = images[spriteKey];
                         if (img && img.complete && img.width > 0) {
                             if (rot) {
@@ -949,7 +1069,7 @@ class World {
 
                 // Beach/west palm tree strip — grass tiles bordering the sand on west and south edges
                 if (tile === T.GRASS && (x + y) % 2 === 0) {
-                    const onWestStrip  = (x === 7 || x === 8) && y < WORLD_H - 7;
+                    const onWestStrip = (x === 7 || x === 8) && y < WORLD_H - 7;
                     const onSouthStrip = (y === WORLD_H - 7 || y === WORLD_H - 8) && x >= 7;
                     if (onWestStrip || onSouthStrip) {
                         const cx = x * TILE + TILE / 2;
@@ -1020,6 +1140,26 @@ class World {
 
             if (b.isHospital && images && images['hospital'] && images['hospital'].complete) {
                 ctx.drawImage(images['hospital'], b.x, b.y, b.w, b.h);
+                continue;
+            }
+
+            if (b.isSafeHouse && images && images['safe_house'] && images['safe_house'].complete) {
+                ctx.drawImage(images['safe_house'], b.x, b.y, b.w, b.h);
+                continue;
+            }
+
+            if (b.isHouse1 && images && images['house1'] && images['house1'].complete) {
+                ctx.drawImage(images['house1'], b.x, b.y, b.w, b.h);
+                continue;
+            }
+
+            if (b.isHouse2 && images && images['house2'] && images['house2'].complete) {
+                ctx.drawImage(images['house2'], b.x, b.y, b.w, b.h);
+                continue;
+            }
+
+            if (b.isHouse3 && images && images['house3'] && images['house3'].complete) {
+                ctx.drawImage(images['house3'], b.x, b.y, b.w, b.h);
                 continue;
             }
 

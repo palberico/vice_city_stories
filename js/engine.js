@@ -80,7 +80,7 @@ class Game {
             'helicopter_red', 'helicopter_green', 'helicopter_blue',
             'car_sports_red', 'car_sports_blue', 'car_sports_green', 'car_sports_white',
             'car_sedan_red', 'car_sedan_blue', 'car_sedan_green', 'car_sedan_white',
-            'hospital', 'police_building', 'bank',
+            'hospital', 'police_building', 'bank', 'safe_house', 'house1', 'house2', 'house3',
             'sidewalk/corner',
             'sidewalk/sidewalk_plain',
             'roads/parking/police_parking',
@@ -103,6 +103,10 @@ class Game {
             'buildings/building1',
             'buildings/building2',
             'landscape/grass',
+            'landscape/grass1',
+            'landscape/grass2',
+            'landscape/driveway1',
+            'landscape/driveway2',
             'landscape/grass_fence1',
             'landscape/grass_fence2',
             'npc_business_man_front', 'npc_business_man_back',
@@ -127,27 +131,31 @@ class Game {
             'helicopter_red': 'assets/vehicles/air/colors/helicopter_red.png',
             'helicopter_green': 'assets/vehicles/air/colors/helicopter_green.png',
             'helicopter_blue': 'assets/vehicles/air/colors/helicopter_blue.png',
-            'car_sports_red':   'assets/vehicles/ground/car_sports_red.png',
-            'car_sports_blue':  'assets/vehicles/ground/car_sports_blue.png',
+            'car_sports_red': 'assets/vehicles/ground/car_sports_red.png',
+            'car_sports_blue': 'assets/vehicles/ground/car_sports_blue.png',
             'car_sports_green': 'assets/vehicles/ground/car_sports_green.png',
             'car_sports_white': 'assets/vehicles/ground/car_sports_white.png',
-            'car_sedan_red':    'assets/vehicles/ground/car_sedan_red.png',
-            'car_sedan_blue':   'assets/vehicles/ground/car_sedan_blue.png',
-            'car_sedan_green':  'assets/vehicles/ground/car_sedan_green.png',
-            'car_sedan_white':  'assets/vehicles/ground/car_sedan_white.png',
-            'hospital':                    'assets/buildings/hospital.png',
-            'police_building':             'assets/buildings/police.png',
-            'bank':                        'assets/buildings/bank.png',
-            'roads/parking/police_parking':  'assets/roads/parking/police_parking.png',
-            'roads/parking/helipad_closed':  'assets/roads/parking/helipad_closed.png',
-            'roads/parking/helipad_open':    'assets/roads/parking/helipad_open.png',
-            'roads/crosswalk':              'assets/roads/crosswalk.png',
-            'roads/stoplight':              'assets/roads/stoplight.png',
-            'buildings/gas':               'assets/buildings/gas.png',
-            'buildings/parkinglot':        'assets/buildings/parkinglot.png',
-            'buildings/lawyer':            'assets/buildings/lawyer.png',
-            'buildings/building1':         'assets/buildings/building1.png',
-            'buildings/building2':         'assets/buildings/building2.png',
+            'car_sedan_red': 'assets/vehicles/ground/car_sedan_red.png',
+            'car_sedan_blue': 'assets/vehicles/ground/car_sedan_blue.png',
+            'car_sedan_green': 'assets/vehicles/ground/car_sedan_green.png',
+            'car_sedan_white': 'assets/vehicles/ground/car_sedan_white.png',
+            'hospital': 'assets/buildings/hospital.png',
+            'police_building': 'assets/buildings/police.png',
+            'bank': 'assets/buildings/bank.png',
+            'safe_house': 'assets/buildings/safe_house.png',
+            'house1': 'assets/buildings/house1.png',
+            'house2': 'assets/buildings/house2.png',
+            'house3': 'assets/buildings/house3.png',
+            'roads/parking/police_parking': 'assets/roads/parking/police_parking.png',
+            'roads/parking/helipad_closed': 'assets/roads/parking/helipad_closed.png',
+            'roads/parking/helipad_open': 'assets/roads/parking/helipad_open.png',
+            'roads/crosswalk': 'assets/roads/crosswalk.png',
+            'roads/stoplight': 'assets/roads/stoplight.png',
+            'buildings/gas': 'assets/buildings/gas.png',
+            'buildings/parkinglot': 'assets/buildings/parkinglot.png',
+            'buildings/lawyer': 'assets/buildings/lawyer.png',
+            'buildings/building1': 'assets/buildings/building1.png',
+            'buildings/building2': 'assets/buildings/building2.png',
         };
 
         const promises = assetList.map(name => {
@@ -178,7 +186,7 @@ class Game {
             'helicopter_red', 'helicopter_green', 'helicopter_blue',
             'car_sports_red', 'car_sports_blue', 'car_sports_green', 'car_sports_white',
             'car_sedan_red', 'car_sedan_blue', 'car_sedan_green', 'car_sedan_white',
-            'hospital', 'police_building', 'bank',
+            'hospital', 'police_building', 'bank', 'safe_house', 'house1', 'house2', 'house3',
             'npc_business_man_front', 'npc_business_man_back',
             'npc_business_man_front_walk', 'npc_business_man_back_walk',
             'npc_beach_tourist_front', 'npc_beach_tourist_back',
@@ -276,8 +284,8 @@ class Game {
 
         // Define spray colors early so they can be used for vehicle spawning
         this.sprayColors = [
-            { name: 'Red',   hex: '#cc2200', sportsImg: 'car_sports_red',   sedanImg: 'car_sedan_red' },
-            { name: 'Blue',  hex: '#2255cc', sportsImg: 'car_sports_blue',  sedanImg: 'car_sedan_blue' },
+            { name: 'Red', hex: '#cc2200', sportsImg: 'car_sports_red', sedanImg: 'car_sedan_red' },
+            { name: 'Blue', hex: '#2255cc', sportsImg: 'car_sports_blue', sedanImg: 'car_sedan_blue' },
             { name: 'Green', hex: '#228833', sportsImg: 'car_sports_green', sedanImg: 'car_sedan_green' },
             { name: 'White', hex: '#dddddd', sportsImg: 'car_sports_white', sedanImg: 'car_sedan_white' },
         ];
@@ -1336,7 +1344,7 @@ class Game {
 
         // Warning zone: 4x4 tiles starting at (54,26) — alerts before the arrest zone
         const inWarnZone = this.player.x >= 54 * TILE && this.player.x < 58 * TILE &&
-                           this.player.y >= 26 * TILE && this.player.y < 30 * TILE;
+            this.player.y >= 26 * TILE && this.player.y < 30 * TILE;
         if (cdMs > 0 && !inGrace && inWarnZone && this.bankProxCooldown <= 0) {
             this.hud.notify('⚠ LOCKDOWN ZONE — TURN BACK!');
             this.bankProxCooldown = 3;
@@ -1848,6 +1856,13 @@ class Game {
         ctx.fillStyle = '#fff'; ctx.font = 'bold 6px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText('S', psx, psy);
 
+        // Safe House blip
+        const shx = offX + (15 * 64 + 64 * 1.5) * scale, shy = offY + (6 * 64 - 64 * 0.5) * scale;
+        ctx.fillStyle = '#8b4513';
+        ctx.beginPath(); ctx.arc(shx, shy, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 6px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('H', shx, shy);
+
         // Ammu-Nation blips
         ctx.textBaseline = 'middle';
         for (const store of this.stores) {
@@ -1904,6 +1919,7 @@ class Game {
                 { color: '#4466ff', label: 'Police' },
                 { color: '#ff6600', label: 'Pay & Spray' },
                 { color: '#00aa44', label: 'Ammu-Nation' },
+                { color: '#8b4513', label: 'Safe House' },
                 { color: '#ffaa00', label: 'Mission' },
             ];
             ctx.textAlign = 'left';
