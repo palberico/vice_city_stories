@@ -123,12 +123,16 @@ class HUD {
         // ---- Mission Objective ----
         const objective = missions.getCurrentObjective();
         if (objective) {
+            const objectiveLines = this.wrapHudText(ctx, `★ ${objective}`, Math.min(860, W - 40), 3);
+            const objectiveH = 18 + objectiveLines.length * 16;
             ctx.fillStyle = 'rgba(0,0,0,0.6)';
-            ctx.fillRect(W / 2 - 200, 10, 400, 30);
+            ctx.fillRect(W / 2 - 430, 10, 860, objectiveH);
             ctx.fillStyle = '#ffcc00';
-            ctx.font = 'bold 13px "Segoe UI", Arial';
+            ctx.font = 'bold 12px "Segoe UI", Arial';
             ctx.textAlign = 'center';
-            ctx.fillText(`★ ${objective}`, W / 2, 30);
+            objectiveLines.forEach((line, index) => {
+                ctx.fillText(line, W / 2, 28 + index * 15);
+            });
         }
 
         // ---- Race Timer ----
@@ -148,12 +152,17 @@ class HUD {
         if (missions.messageTimer > 0) {
             const alpha = Math.min(1, missions.messageTimer);
             const isFailed = missions.missionMessage.startsWith('MISSION FAILED');
+            const messageLines = this.wrapHudText(ctx, missions.missionMessage, Math.min(860, W - 40), 3);
+            const messageY = raceTimer !== null ? 92 : 58;
+            const messageH = 16 + messageLines.length * 16;
             ctx.fillStyle = `rgba(0,0,0,${0.7 * alpha})`;
-            ctx.fillRect(W / 2 - 300, raceTimer !== null ? 80 : 50, 600, 35);
+            ctx.fillRect(W / 2 - 430, messageY, 860, messageH);
             ctx.fillStyle = isFailed ? `rgba(255,80,80,${alpha})` : `rgba(255,255,255,${alpha})`;
-            ctx.font = 'bold 15px "Segoe UI", Arial';
+            ctx.font = 'bold 14px "Segoe UI", Arial';
             ctx.textAlign = 'center';
-            ctx.fillText(missions.missionMessage, W / 2, (raceTimer !== null ? 80 : 50) + 22);
+            messageLines.forEach((line, index) => {
+                ctx.fillText(line, W / 2, messageY + 18 + index * 15);
+            });
         }
 
         // ---- Day/Night indicator ----
@@ -233,5 +242,37 @@ class HUD {
                 ctx.fillText(`Respawning... -$100`, W / 2, H / 2 + 40);
             }
         }
+    }
+
+    wrapHudText(ctx, text, maxWidth, maxLines = 2) {
+        const words = String(text || '').split(/\s+/).filter(Boolean);
+        const lines = [];
+        let line = '';
+
+        for (const word of words) {
+            const test = line ? `${line} ${word}` : word;
+            if (ctx.measureText(test).width <= maxWidth || !line) {
+                line = test;
+            } else {
+                lines.push(line);
+                line = word;
+                if (lines.length >= maxLines) break;
+            }
+        }
+
+        if (lines.length < maxLines && line) lines.push(line);
+
+        if (lines.length === maxLines) {
+            const consumed = lines.join(' ').split(/\s+/).filter(Boolean).length;
+            if (consumed < words.length) {
+                let truncated = lines[lines.length - 1];
+                while (truncated.length > 0 && ctx.measureText(`${truncated}...`).width > maxWidth) {
+                    truncated = truncated.slice(0, -1);
+                }
+                lines[lines.length - 1] = `${truncated.trimEnd()}...`;
+            }
+        }
+
+        return lines;
     }
 }

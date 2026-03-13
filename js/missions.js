@@ -6,13 +6,15 @@ const MISSION_DATA = [
     {
         id: 'first_ride',
         name: 'First Ride',
-        description: 'Steal a car and drive it to the NW safehouse.',
+        description: 'Steal a car, pick up Darnell at the hospital, then drop him at his attorney before heading home.',
         reward: 500,
         startTile: { x: 12, y: 10 },   // NW
         available: true,
         steps: [
             { type: 'enter_vehicle', text: 'Find and steal a vehicle' },
-            { type: 'drive_to', text: 'Drive to the NW safehouse', targetTile: { x: 22, y: 20 }, radius: 100 }
+            { type: 'wait_for_darnell', text: 'Drive to the hospital pickup', targetPos: HOSPITAL_PICKUP_PX, radius: 70 },
+            { type: 'drive_darnell_to_attorney', text: 'Take Darnell to his attorney', targetPos: ATTORNEY_DROP_PX, radius: 80 },
+            { type: 'return_to_safe_house', text: 'Take your new ride back to the safe house', targetPos: SAFE_HOUSE_DRIVEWAY_PX, radius: 70 }
         ]
     },
     {
@@ -21,7 +23,7 @@ const MISSION_DATA = [
         description: 'Collect a package from the NE docks and deliver it downtown.',
         reward: 1000,
         startTile: { x: 60, y: 10 },   // NE
-        available: true,
+        available: false,
         steps: [
             { type: 'go_to', text: 'Go to the NE pickup point', targetTile: { x: 72, y: 10 }, radius: 80 },
             { type: 'go_to', text: 'Deliver the package downtown', targetTile: { x: 46, y: 22 }, radius: 80 }
@@ -33,7 +35,7 @@ const MISSION_DATA = [
         description: 'Steal the marked sports car in the SE and bring it to the garage.',
         reward: 1500,
         startTile: { x: 60, y: 58 },   // SE
-        available: true,
+        available: false,
         steps: [
             { type: 'go_to', text: 'Find the repo car in the SE', targetTile: { x: 72, y: 58 }, radius: 120 },
             { type: 'enter_repo_vehicle', text: 'Steal the marked car' },
@@ -47,7 +49,7 @@ const MISSION_DATA = [
         reward: 2000,
         timeLimit: 90,
         startTile: { x: 35, y: 22 },   // Center
-        available: true,
+        available: false,
         steps: [
             { type: 'enter_vehicle', text: 'Get in a fast car' },
             { type: 'drive_to', text: 'Checkpoint 1 — NW corner', targetTile: { x: 12, y: 10 }, radius: 100 },
@@ -62,7 +64,7 @@ const MISSION_DATA = [
         description: 'Rob the SW store and escape east!',
         reward: 3000,
         startTile: { x: 24, y: 58 },   // SW
-        available: true,
+        available: false,
         steps: [
             { type: 'go_to', text: 'Go to the target store', targetTile: { x: 22, y: 68 }, radius: 80 },
             { type: 'shoot', text: 'Rob the store (shoot inside)', targetTile: { x: 22, y: 68 }, radius: 120 },
@@ -163,7 +165,7 @@ const MISSION_DATA = [
         description: 'Meet Darnell — he\'s got work for you.',
         reward: 5000,
         startTile: { x: 24, y: 34 },
-        available: true,
+        available: false,
         steps: [
             { type: 'find_darnell',      text: 'Talk to Darnell, he has a job for you' },
             { type: 'close_chat',        text: 'Talk to Darnell' },
@@ -177,7 +179,7 @@ const MISSION_DATA = [
 ];
 
 class MissionSystem {
-    constructor() {
+    constructor(savedMissionState = null, options = {}) {
         this.missions = MISSION_DATA.map(m => ({ ...m, completed: false }));
         this.activeMission = null;
         this.currentStep = 0;
@@ -193,6 +195,13 @@ class MissionSystem {
         this.chatBox = null;
         this.guards = [];
         this.rpgPickup = null;
+        this.onStateChange = options.onStateChange || null;
+        this.onMissionComplete = options.onMissionComplete || null;
+        this.firstRideWaitShown = false;
+        this.firstRideAttorneyChatShown = false;
+        this.firstRideAttorneyDropDone = false;
+        if (savedMissionState) this.applyMissionState(savedMissionState);
+        this.normalizeMissionAvailability();
         this.setupMarkers();
     }
 
@@ -206,6 +215,42 @@ class MissionSystem {
                     missionIndex: i, radius: 50
                 });
             }
+        }
+    }
+
+    applyMissionState(savedMissionState) {
+        if (!Array.isArray(savedMissionState)) return;
+        for (const saved of savedMissionState) {
+            const mission = this.missions.find(m => m.id === saved.id);
+            if (!mission) continue;
+            mission.completed = !!saved.completed;
+            mission.available = !!saved.available;
+        }
+    }
+
+    getMissionState() {
+        return this.missions.map(m => ({
+            id: m.id,
+            completed: !!m.completed,
+            available: !!m.available,
+        }));
+    }
+
+    normalizeMissionAvailability() {
+        const firstRide = this.missions.find(m => m.id === 'first_ride');
+        if (!firstRide) return;
+
+        if (!firstRide.completed) {
+            for (const mission of this.missions) {
+                mission.available = mission.id === 'first_ride';
+            }
+            return;
+        }
+
+        const availableIncomplete = this.missions.filter(m => !m.completed && m.available);
+        if (availableIncomplete.length === 0) {
+            const next = this.missions.find(m => !m.completed);
+            if (next) next.available = true;
         }
     }
 
@@ -306,6 +351,98 @@ class MissionSystem {
         ];
     }
 
+    _spawnFirstRideDarnell(vehicle) {
+        this.darnell = {
+            x: HOSPITAL_DOOR_PX.x,
+            y: HOSPITAL_DOOR_PX.y,
+            alive: true,
+            angle: 0,
+            state: 'walking_to_car',
+            vehicle,
+            targetX: vehicle ? vehicle.x : HOSPITAL_PICKUP_PX.x,
+            targetY: vehicle ? vehicle.y : HOSPITAL_PICKUP_PX.y,
+        };
+    }
+
+    _releaseDarnellFromCar(targetX, targetY) {
+        if (!this.darnell) return;
+        this.darnell.x = ATTORNEY_DROP_PX.x - TILE * 0.8;
+        this.darnell.y = ATTORNEY_DROP_PX.y - TILE * 0.15;
+        this.darnell.angle = Math.PI;
+        this.darnell.exitPause = 0.4;
+        this.darnell.state = 'walking_to_office';
+        this.darnell.vehicle = null;
+        this.darnell.targetX = targetX;
+        this.darnell.targetY = targetY;
+    }
+
+    handleChatClosed() {
+        if (!this.activeMission) return;
+        const step = this.activeMission.steps[this.currentStep];
+        if (!step) return;
+        if (this.activeMission.id === 'first_ride' &&
+            step.type === 'drive_darnell_to_attorney' &&
+            this.firstRideAttorneyChatShown &&
+            this.darnell &&
+            this.darnell.state === 'in_car') {
+            this._releaseDarnellFromCar(ATTORNEY_OFFICE_PX.x, ATTORNEY_OFFICE_PX.y);
+            this.firstRideAttorneyDropDone = true;
+        }
+    }
+
+    _updateDarnell(dt, player) {
+        if (!this.darnell || !this.darnell.alive) return;
+
+        if (this.darnell.state === 'walking_to_car') {
+            const targetVehicle = this.darnell.vehicle;
+            if (!targetVehicle || targetVehicle.health <= 0) {
+                this.darnell.alive = false;
+                return;
+            }
+            const dx = targetVehicle.x - this.darnell.x;
+            const dy = targetVehicle.y - this.darnell.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const speed = 90;
+            if (dist > 18) {
+                this.darnell.angle = Math.atan2(dy, dx);
+                this.darnell.x += (dx / dist) * speed * dt;
+                this.darnell.y += (dy / dist) * speed * dt;
+            } else {
+                this.darnell.state = 'in_car';
+                this.darnell.vehicle = targetVehicle;
+                this.showMessage('Darnell is in. Take him to the attorney.');
+            }
+        } else if (this.darnell.state === 'in_car') {
+            const ride = this.darnell.vehicle;
+            if (!ride || ride.health <= 0) {
+                this.darnell.alive = false;
+                return;
+            }
+            this.darnell.x = ride.x;
+            this.darnell.y = ride.y;
+            this.darnell.angle = ride.angle;
+        } else if (this.darnell.state === 'walking_to_office') {
+            if (this.darnell.exitPause > 0) {
+                this.darnell.exitPause -= dt;
+                return;
+            }
+            const dx = this.darnell.targetX - this.darnell.x;
+            const dy = this.darnell.targetY - this.darnell.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const speed = 95;
+            if (dist > 10) {
+                this.darnell.x += (dx / dist) * speed * dt;
+                this.darnell.y += (dy / dist) * speed * dt;
+                this.darnell.angle = Math.atan2(dy, dx);
+            } else {
+                this.darnell.state = 'inside';
+            }
+        } else if (this.darnell.state === 'inside') {
+            this.darnell.alive = false;
+        }
+
+    }
+
     update(dt, player, audio, vehicles, images) {
         this.messageTimer = Math.max(0, this.messageTimer - dt);
 
@@ -319,9 +456,16 @@ class MissionSystem {
             return;
         }
 
+        this._updateDarnell(dt, player);
+
         // ── Failure conditions ──
         if (!player.alive) {
             this.failMission('You were wasted!', audio, vehicles);
+            return;
+        }
+        if (this.activeMission.id === 'first_ride' && this.darnell && !this.darnell.alive &&
+            this.currentStep <= 1) {
+            this.failMission('Darnell did not make it.', audio, vehicles);
             return;
         }
         if (this.activeMission.id === 'repo_job' && this.repoVehicle && this.repoVehicle.health <= 0) {
@@ -451,6 +595,45 @@ class MissionSystem {
             case 'enter_vehicle':
                 if (player.inVehicle) completed = true;
                 break;
+            case 'wait_for_darnell':
+                if (player.inVehicle && step.targetPos &&
+                    Collision.dist(player.x, player.y, step.targetPos.x, step.targetPos.y) < step.radius &&
+                    Math.abs(player.inVehicle.speed) < 20) {
+                    if (!this.firstRideWaitShown) {
+                        this.firstRideWaitShown = true;
+                        this.showMessage('Wait for Darnell');
+                        this._spawnFirstRideDarnell(player.inVehicle);
+                    }
+                }
+                if (this.darnell && this.darnell.state === 'in_car') completed = true;
+                break;
+            case 'drive_darnell_to_attorney':
+                if (!this.firstRideAttorneyChatShown && player.inVehicle && this.darnell && this.darnell.state === 'in_car' &&
+                    step.targetPos && Collision.dist(player.x, player.y, step.targetPos.x, step.targetPos.y) < step.radius &&
+                    Math.abs(player.inVehicle.speed) < 20) {
+                    if (!this.firstRideAttorneyChatShown) {
+                        this.firstRideAttorneyChatShown = true;
+                        this.chatBox = {
+                            active: true,
+                            lines: [
+                                'Thanks for the ride. My attorney is inside.',
+                                'There are a couple of cars in the lot if you want something different.',
+                                'Meet me back at the safe house when you are ready.'
+                            ]
+                        };
+                    }
+                }
+                if (this.firstRideAttorneyDropDone) {
+                    completed = true;
+                }
+                break;
+            case 'return_to_safe_house':
+                if (player.inVehicle && step.targetPos &&
+                    Collision.dist(player.x, player.y, step.targetPos.x, step.targetPos.y) < step.radius &&
+                    Math.abs(player.inVehicle.speed) < 20) {
+                    completed = true;
+                }
+                break;
             case 'enter_repo_vehicle':
                 if (player.inVehicle && player.inVehicle.isRepoTarget) completed = true;
                 break;
@@ -509,6 +692,11 @@ class MissionSystem {
         this.currentStep = 0;
         this.missionTimer = 0;
         this.timerActive = false;
+        this.firstRideWaitShown = false;
+        this.firstRideAttorneyChatShown = false;
+        this.firstRideAttorneyDropDone = false;
+        this.darnell = null;
+        this.chatBox = null;
         this.showMessage(`MISSION: ${this.activeMission.name} — ${this.activeMission.description}`);
         audio.playPickup();
         if (this.activeMission.id === 'repo_job') {
@@ -534,10 +722,20 @@ class MissionSystem {
         this.rpgPickup = null;
     }
 
+    _cleanupFirstRide() {
+        this.darnell = null;
+        this.chatBox = null;
+        this.firstRideWaitShown = false;
+        this.firstRideAttorneyChatShown = false;
+        this.firstRideAttorneyDropDone = false;
+    }
+
     completeMission(player, audio, vehicles) {
+        const completedMission = this.activeMission;
         player.money += this.activeMission.reward;
         this.showMessage(`MISSION COMPLETE: ${this.activeMission.name}! +$${this.activeMission.reward}`);
 
+        if (this.activeMission.id === 'first_ride') this._cleanupFirstRide();
         if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
         if (this.activeMission.id === 'the_armored_job') this._cleanupArmoredJob(vehicles);
 
@@ -550,12 +748,15 @@ class MissionSystem {
         if (next) next.available = true;
 
         this.setupMarkers();
+        if (this.onMissionComplete) this.onMissionComplete(completedMission, player, vehicles);
+        if (this.onStateChange) this.onStateChange(this.getMissionState());
         audio.playMissionComplete();
     }
 
     failMission(reason, audio, vehicles) {
         const name = this.activeMission.name;
         this.showMessage(`MISSION FAILED: ${name} — ${reason}`);
+        if (this.activeMission.id === 'first_ride') this._cleanupFirstRide();
         if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
         if (this.activeMission.id === 'the_armored_job') this._cleanupArmoredJob(vehicles);
         this.activeMission = null;
@@ -565,9 +766,9 @@ class MissionSystem {
         this.setupMarkers();
     }
 
-    showMessage(msg) {
+    showMessage(msg, duration = 6) {
         this.missionMessage = msg;
-        this.messageTimer = 4;
+        this.messageTimer = duration;
     }
 
     getCurrentObjective() {
@@ -580,11 +781,17 @@ class MissionSystem {
         if (!this.activeMission) return null;
         const step = this.activeMission.steps[this.currentStep];
         if (!step) return null;
+        if (step.type === 'wait_for_darnell' && this.darnell && this.darnell.alive) {
+            return { x: this.darnell.x, y: this.darnell.y };
+        }
         if (step.type === 'find_darnell' && this.darnell && this.darnell.alive) {
             return { x: this.darnell.x, y: this.darnell.y };
         }
         if (step.type === 'get_rpg' && this.rpgPickup && this.rpgPickup.active) {
             return { x: this.rpgPickup.x, y: this.rpgPickup.y };
+        }
+        if (step.targetPos) {
+            return { x: step.targetPos.x, y: step.targetPos.y };
         }
         if (step.targetTile) {
             return { x: step.targetTile.x * TILE, y: step.targetTile.y * TILE };
@@ -599,10 +806,16 @@ class MissionSystem {
 
     drawMissionEntities(ctx, images, player) {
         // Draw Darnell NPC
-        if (this.darnell && this.darnell.alive) {
+        if (this.darnell && this.darnell.alive && this.darnell.state !== 'in_car') {
             const d = this.darnell;
-            const img = images['npc_casual_front'];
+            const img = Math.sin(d.angle || 0) >= 0 ? images['npc_casual_front_walk'] || images['npc_casual_front']
+                : images['npc_casual_back_walk'] || images['npc_casual_back'];
             ctx.save();
+            ctx.strokeStyle = 'rgba(255, 136, 0, 0.9)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(d.x, d.y, 16, 0, Math.PI * 2);
+            ctx.stroke();
             if (img) {
                 ctx.drawImage(img, d.x - 12, d.y - 18, 24, 36);
             } else {
@@ -713,7 +926,7 @@ class MissionSystem {
         }
 
         // Darnell NPC marker
-        if (this.darnell && this.darnell.alive) {
+        if (this.darnell && this.darnell.alive && this.darnell.state !== 'in_car') {
             const pulse = Math.sin(Date.now() / 400) * 4;
             ctx.save();
             ctx.strokeStyle = '#ff8800';

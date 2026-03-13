@@ -27,6 +27,7 @@ const VEHICLE_TYPES = {
     // Sprites with front at TOP of image: +PI/2 (sedan, police, motorcycle)
     sports: { name: 'Infernus', topSpeed: 393, accel: 280, handling: 3.0, braking: 350, w: 30, h: 55, color: '#cc2222', img: 'car_sports', spriteRot: -Math.PI / 2 },
     sedan: { name: 'Admiral', topSpeed: 262, accel: 200, handling: 2.5, braking: 300, w: 28, h: 52, color: '#eeeecc', img: 'car_sedan', spriteRot: Math.PI / 2 },
+    jeep: { name: 'Mesa', topSpeed: 228, accel: 185, handling: 2.2, braking: 290, w: 30, h: 54, color: '#2d66d8', img: 'car_jeep_blue', spriteRot: -Math.PI / 2, spriteScale: 1.55 },
     police: { name: 'Police', topSpeed: 349, accel: 260, handling: 2.8, braking: 340, w: 30, h: 55, color: '#222244', img: 'car_police', spriteRot: Math.PI / 2 },
     motorcycle: { name: 'PCJ-600', topSpeed: 480, accel: 320, handling: 4.0, braking: 250, w: 14, h: 30, color: '#333333', img: 'motorcycle', spriteRot: Math.PI / 2 },
     helicopter: { name: 'Maverick', topSpeed: 349, accel: 150, handling: 1.5, braking: 100, w: 40, h: 40, color: '#990000', img: 'helicopter', spriteRot: Math.PI / 2 },
@@ -48,11 +49,13 @@ class Vehicle {
         this.h = spec.h;
         this.color = spec.color;
         this.spriteRot = spec.spriteRot;
+        this.spriteScale = spec.spriteScale || 1.8;
         this.angle = 0;
         this.speed = 0;
         this.health = 100;
         this.driver = null;
         this.img = images[spec.img] || null;
+        this.imgKey = spec.img;
         this.propellerImg = images['propeller'] || null;
         this.engineSoundTimer = 0;
         this.isPolicePatrol = false;
@@ -62,6 +65,7 @@ class Vehicle {
         this.isWreck = false; // true once destroyed and left as a burnt-out shell
         this.customColor = null;
         this.liftScale = 0; // 0 = grounded, 1 = fully airborne (helicopter only)
+        this.isDrivewaySaved = false;
 
         // NPC AI driving
         this.ai = {
@@ -272,6 +276,7 @@ class Vehicle {
         // Check for obstacles ahead (braking)
         const lookDist = 70 + Math.abs(this.speed) * 0.3;
         let obstacle = false;
+        let passiveStop = false;
 
         if (player && player.alive && !player.inVehicle) {
             // Police bypass braking for players on foot if they have a wanted level (to run them over)
@@ -284,7 +289,10 @@ class Vehicle {
                     let diff = toP - this.angle;
                     while (diff > Math.PI) diff -= Math.PI * 2;
                     while (diff < -Math.PI) diff += Math.PI * 2;
-                    if (Math.abs(diff) < Math.PI / 3) obstacle = true;
+                    if (Math.abs(diff) < Math.PI / 3) {
+                        obstacle = true;
+                        passiveStop = true;
+                    }
                 }
             }
         }
@@ -296,7 +304,10 @@ class Vehicle {
                 let diff = toP - this.angle;
                 while (diff > Math.PI) diff -= Math.PI * 2;
                 while (diff < -Math.PI) diff += Math.PI * 2;
-                if (Math.abs(diff) < Math.PI / 3) obstacle = true;
+                if (Math.abs(diff) < Math.PI / 3) {
+                    obstacle = true;
+                    passiveStop = true;
+                }
             }
         }
 
@@ -311,6 +322,7 @@ class Vehicle {
                     while (diff < -Math.PI) diff += Math.PI * 2;
                     if (Math.abs(diff) < Math.PI / 4) {
                         obstacle = true;
+                        passiveStop = true;
                         break;
                     }
                 }
@@ -330,13 +342,19 @@ class Vehicle {
                     if (d === 'up') {
                         const stopY = (hy + world.ROAD_WIDTH) * TILE;
                         if (this.y > stopY && this.y - stopY < BD) {
-                            if (window.trafficLights.getState(roadInfo.roadStart, hy, 'ns') !== 'green') obstacle = true;
+                            if (window.trafficLights.getState(roadInfo.roadStart, hy, 'ns') !== 'green') {
+                                obstacle = true;
+                                passiveStop = true;
+                            }
                             break;
                         }
                     } else if (d === 'down') {
                         const stopY = hy * TILE;
                         if (this.y < stopY && stopY - this.y < BD) {
-                            if (window.trafficLights.getState(roadInfo.roadStart, hy, 'ns') !== 'green') obstacle = true;
+                            if (window.trafficLights.getState(roadInfo.roadStart, hy, 'ns') !== 'green') {
+                                obstacle = true;
+                                passiveStop = true;
+                            }
                             break;
                         }
                     }
@@ -346,13 +364,19 @@ class Vehicle {
                     if (d === 'right') {
                         const stopX = vx * TILE;
                         if (this.x < stopX && stopX - this.x < BD) {
-                            if (window.trafficLights.getState(vx, roadInfo.roadStart, 'ew') !== 'green') obstacle = true;
+                            if (window.trafficLights.getState(vx, roadInfo.roadStart, 'ew') !== 'green') {
+                                obstacle = true;
+                                passiveStop = true;
+                            }
                             break;
                         }
                     } else if (d === 'left') {
                         const stopX = (vx + world.ROAD_WIDTH) * TILE;
                         if (this.x > stopX && this.x - stopX < BD) {
-                            if (window.trafficLights.getState(vx, roadInfo.roadStart, 'ew') !== 'green') obstacle = true;
+                            if (window.trafficLights.getState(vx, roadInfo.roadStart, 'ew') !== 'green') {
+                                obstacle = true;
+                                passiveStop = true;
+                            }
                             break;
                         }
                     }
@@ -364,12 +388,15 @@ class Vehicle {
             this.speed *= (1 - 6 * dt);
             if (Math.abs(this.speed) < 3) {
                 this.speed = 0;
-                // Accumulate idle time if stuck
-                if (!this.isRepoTarget) {
+                // Only treat pathing failures as "stuck". Waiting at a light or in traffic
+                // is expected behavior and should not despawn the car.
+                if (!this.isRepoTarget && !passiveStop) {
                     this.idleTimer += dt;
                     if (this.idleTimer >= 10) {
                         this.health = 0; // Triggers despawn in engine.js
                     }
+                } else {
+                    this.idleTimer = 0;
                 }
             } else {
                 this.idleTimer = 0; // Reset if inching forward
@@ -598,7 +625,7 @@ class Vehicle {
                 // The rotor hub in the sprite is at ~30% from top, not the geometric
                 // center (50%).  Shift the body down so the hub sits at (0,0) — the
                 // same point the propeller rotates around.
-                const scale = Math.max(this.w / this.img.width, this.h / this.img.height) * 1.8;
+                const scale = Math.max(this.w / this.img.width, this.h / this.img.height) * this.spriteScale;
                 const drawW = this.img.width * scale;
                 const drawH = this.img.height * scale;
                 ctx.drawImage(this.img, -drawW / 2, -drawH / 2, drawW, drawH);
@@ -679,7 +706,7 @@ class Vehicle {
 
         } else if (this.img && this.img.complete) {
             if (this.customColor && this.type !== 'sports' && this.type !== 'sedan') ctx.filter = this._colorFilter();
-            let scale = Math.max(this.w / this.img.width, this.h / this.img.height) * 1.8;
+            let scale = Math.max(this.w / this.img.width, this.h / this.img.height) * this.spriteScale;
             if (this.type === 'motorcycle') scale *= 0.7;
             ctx.drawImage(this.img, -this.img.width * scale / 2, -this.img.height * scale / 2, this.img.width * scale, this.img.height * scale);
             ctx.filter = 'none';

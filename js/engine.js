@@ -11,6 +11,8 @@ class Game {
         this.dayNight = { time: 8, speed: 0.02 }; // starts at 8:00 AM, 0.02 hours/sec (~20 min per full cycle)
         this.menuReady = false;
         this.showGrid = false;
+        this.saveKey = 'gta6_save_v1';
+        this.saveData = null;
 
         // Systems
         this.camera = null;
@@ -31,40 +33,47 @@ class Game {
 
         // Load images
         console.log('[GTA6] Loading assets...');
-        this.loadAssets().then(() => {
-            this.menu.setLogo(this.images.logo);
-            requestAnimationFrame(t => this.gameLoop(t));
+        this.loadAssets()
+            .then(() => {
+                this.menu.setLogo(this.images.logo);
+                requestAnimationFrame(t => this.gameLoop(t));
 
-            // Auto-start if URL has ?autostart (for automated testing)
-            if (window.location.search.includes('autostart')) {
+                // Auto-start if URL has ?autostart (for automated testing)
+                if (window.location.search.includes('autostart')) {
+                    setTimeout(() => {
+                        try {
+                            this.audio.init();
+                            this.initGame();
+                        } catch (err) {
+                            console.error('[GTA6] Init error:', err);
+                        }
+                    }, 300);
+                    return;
+                }
+
+                // Direct event listeners for starting the game (bypasses Input system for reliability)
+                const startGame = (e) => {
+                    if (this.state !== 'menu') return;
+                    e.preventDefault();
+                    document.removeEventListener('click', startGame);
+                    document.removeEventListener('keydown', startGame);
+                    document.removeEventListener('touchstart', startGame);
+                    this.audio.init();
+                    this.initGame();
+                };
+                // Small delay to prevent starting from load-click
                 setTimeout(() => {
-                    try {
-                        this.audio.init();
-                        this.initGame();
-                    } catch (err) {
-                        console.error('[GTA6] Init error:', err);
-                    }
-                }, 300);
-                return;
-            }
-
-            // Direct event listeners for starting the game (bypasses Input system for reliability)
-            const startGame = (e) => {
-                if (this.state !== 'menu') return;
-                e.preventDefault();
-                document.removeEventListener('click', startGame);
-                document.removeEventListener('keydown', startGame);
-                document.removeEventListener('touchstart', startGame);
-                this.audio.init();
-                this.initGame();
-            };
-            // Small delay to prevent starting from load-click
-            setTimeout(() => {
-                document.addEventListener('click', startGame);
-                document.addEventListener('keydown', startGame);
-                document.addEventListener('touchstart', startGame);
-            }, 600);
-        });
+                    document.addEventListener('click', startGame);
+                    document.addEventListener('keydown', startGame);
+                    document.addEventListener('touchstart', startGame);
+                }, 600);
+            })
+            .catch(err => {
+                console.error('[GTA6] Asset boot error:', err);
+                const loadingScreen = document.getElementById('loading-screen');
+                if (loadingScreen) loadingScreen.style.display = 'none';
+                requestAnimationFrame(t => this.gameLoop(t));
+            });
     }
 
     resize() {
@@ -73,20 +82,117 @@ class Game {
         if (this.camera) this.camera.resize(this.canvas.width, this.canvas.height);
     }
 
+    loadSaveData() {
+        try {
+            const raw = localStorage.getItem(this.saveKey);
+            return raw ? JSON.parse(raw) : {};
+        } catch (err) {
+            console.warn('[GTA6] Failed to load save data:', err);
+            return {};
+        }
+    }
+
+    writeSaveData() {
+        try {
+            localStorage.setItem(this.saveKey, JSON.stringify(this.saveData || {}));
+        } catch (err) {
+            console.warn('[GTA6] Failed to write save data:', err);
+        }
+    }
+
+    persistMissionState(missionState) {
+        this.saveData = this.saveData || {};
+        this.saveData.missions = missionState;
+        this.writeSaveData();
+    }
+
+    isDrivewayUnlocked() {
+        const missionState = (this.missions && this.missions.getMissionState && this.missions.getMissionState())
+            || (this.saveData && this.saveData.missions)
+            || [];
+        return Array.isArray(missionState) &&
+            missionState.some(m => m.id === 'first_ride' && m.completed);
+    }
+
+    captureVehicleState(vehicle) {
+        return {
+            type: vehicle.type,
+            x: vehicle.x,
+            y: vehicle.y,
+            angle: vehicle.angle,
+            health: vehicle.health,
+            imgKey: vehicle.imgKey || null,
+            customColor: vehicle.customColor || null,
+        };
+    }
+
+    applyVehicleAppearance(vehicle, state) {
+        vehicle.customColor = state.customColor || null;
+        if (state.imgKey && this.images[state.imgKey]) {
+            vehicle.imgKey = state.imgKey;
+            vehicle.img = this.images[state.imgKey];
+        } else {
+            vehicle.imgKey = VEHICLE_TYPES[vehicle.type].img;
+            vehicle.img = this.images[vehicle.imgKey] || vehicle.img;
+        }
+    }
+
+    spawnSavedDrivewayVehicle() {
+        if (!this.isDrivewayUnlocked()) return;
+        const saved = this.saveData && this.saveData.drivewayVehicle;
+        if (!saved || !saved.type || !VEHICLE_TYPES[saved.type]) return;
+        const vehicle = new Vehicle(saved.x, saved.y, saved.type, this.images);
+        vehicle.angle = saved.angle || 0;
+        vehicle.health = saved.health || 100;
+        vehicle.ai.active = false;
+        vehicle.speed = 0;
+        vehicle.isDrivewaySaved = true;
+        vehicle.wasPlayerDriven = true;
+        this.applyVehicleAppearance(vehicle, saved);
+        this.vehicles.push(vehicle);
+    }
+
+    clearSavedDrivewayVehicle() {
+        this.saveData = this.saveData || {};
+        delete this.saveData.drivewayVehicle;
+        this.writeSaveData();
+    }
+
+    saveDrivewayVehicle(vehicle, notifyMessage = null) {
+        if (!vehicle) return;
+        this.vehicles = this.vehicles.filter(v => v === vehicle || !v.isDrivewaySaved);
+        vehicle.isDrivewaySaved = true;
+        vehicle.wasPlayerDriven = true;
+        vehicle.ai.active = false;
+        vehicle.speed = 0;
+        this.saveData = this.saveData || {};
+        this.saveData.drivewayVehicle = this.captureVehicleState(vehicle);
+        this.writeSaveData();
+        if (notifyMessage) this.hud.notify(notifyMessage);
+    }
+
+    isNearDrivewaySaveZone(x, y) {
+        return Collision.dist(x, y, SAFE_HOUSE_DRIVEWAY_PX.x, SAFE_HOUSE_DRIVEWAY_PX.y) < 56;
+    }
+
     async loadAssets() {
         const assetList = [
             'player', 'car_sports', 'car_sedan', 'car_police', 'motorcycle', 'logo',
             'helicopter', 'helicopter_police', 'propeller', 'armored_car', 'npc_casual_front',
             'helicopter_red', 'helicopter_green', 'helicopter_blue',
+            'car_jeep_blue',
             'car_sports_red', 'car_sports_blue', 'car_sports_green', 'car_sports_white',
             'car_sedan_red', 'car_sedan_blue', 'car_sedan_green', 'car_sedan_white',
-            'hospital', 'police_building', 'bank', 'safe_house', 'house1', 'house2', 'house3',
+            'hospital', 'police_building', 'bank', 'safe_house', 'house1', 'house2', 'house3', 'skyscraper1',
             'sidewalk/corner',
             'sidewalk/sidewalk_plain',
+            'roads/parking/ambulance',
             'roads/parking/police_parking',
             'roads/parking/helipad_closed',
             'roads/parking/helipad_open',
             'roads/asphalt_blank',
+            'roads/asphalt_blank2',
+            'roads/er',
             'roads/asphalt_line',
             'roads/asphalt_sewer',
             'roads/asphalt_closed',
@@ -131,6 +237,7 @@ class Game {
             'helicopter_red': 'assets/vehicles/air/colors/helicopter_red.png',
             'helicopter_green': 'assets/vehicles/air/colors/helicopter_green.png',
             'helicopter_blue': 'assets/vehicles/air/colors/helicopter_blue.png',
+            'car_jeep_blue': 'assets/vehicles/ground/car_jeep_blue.png',
             'car_sports_red': 'assets/vehicles/ground/car_sports_red.png',
             'car_sports_blue': 'assets/vehicles/ground/car_sports_blue.png',
             'car_sports_green': 'assets/vehicles/ground/car_sports_green.png',
@@ -146,9 +253,13 @@ class Game {
             'house1': 'assets/buildings/house1.png',
             'house2': 'assets/buildings/house2.png',
             'house3': 'assets/buildings/house3.png',
+            'skyscraper1': 'assets/buildings/skyscraper1.png',
+            'roads/parking/ambulance': 'assets/roads/parking/ambulance.png',
             'roads/parking/police_parking': 'assets/roads/parking/police_parking.png',
             'roads/parking/helipad_closed': 'assets/roads/parking/helipad_closed.png',
             'roads/parking/helipad_open': 'assets/roads/parking/helipad_open.png',
+            'roads/asphalt_blank2': 'assets/roads/asphalt_blank2.png',
+            'roads/er': 'assets/roads/er.png',
             'roads/crosswalk': 'assets/roads/crosswalk.png',
             'roads/stoplight': 'assets/roads/stoplight.png',
             'buildings/gas': 'assets/buildings/gas.png',
@@ -183,10 +294,12 @@ class Game {
         const spriteNames = [
             'player', 'car_sports', 'car_sedan', 'car_police', 'motorcycle',
             'helicopter', 'helicopter_police', 'propeller', 'armored_car',
+            'car_jeep_blue',
             'helicopter_red', 'helicopter_green', 'helicopter_blue',
+            'car_jeep_blue',
             'car_sports_red', 'car_sports_blue', 'car_sports_green', 'car_sports_white',
             'car_sedan_red', 'car_sedan_blue', 'car_sedan_green', 'car_sedan_white',
-            'hospital', 'police_building', 'bank', 'safe_house', 'house1', 'house2', 'house3',
+            'hospital', 'police_building', 'bank', 'safe_house', 'house1', 'house2', 'house3', 'skyscraper1',
             'npc_business_man_front', 'npc_business_man_back',
             'npc_business_man_front_walk', 'npc_business_man_back_walk',
             'npc_beach_tourist_front', 'npc_beach_tourist_back',
@@ -198,7 +311,11 @@ class Game {
         ];
         for (const name of spriteNames) {
             if (this.images[name]) {
-                this.images[name] = this.removeBackground(this.images[name]);
+                try {
+                    this.images[name] = this.removeBackground(this.images[name]);
+                } catch (err) {
+                    console.warn(`[GTA6] Failed to process sprite background for ${name}:`, err);
+                }
             }
         }
 
@@ -264,13 +381,12 @@ class Game {
     }
 
     initGame() {
+        this.saveData = this.loadSaveData();
         this.world = new World();
         this.camera = new Camera(this.canvas.width, this.canvas.height);
 
         // Spawn player
-        const sp = this.world.spawnPoints[Math.floor(this.world.spawnPoints.length / 2)]
-            || this.world.spawnPoints[0]
-            || { x: WORLD_PX_W / 2, y: WORLD_PX_H / 2 };
+        const sp = SAFE_HOUSE_SPAWN_PX;
         this.player = new Player(sp.x, sp.y, this.images.player);
 
         // Snap camera to player immediately
@@ -301,8 +417,10 @@ class Game {
             const randColor = this.sprayColors[Math.floor(Math.random() * this.sprayColors.length)];
             if (type === 'sports' && this.images[randColor.sportsImg]) {
                 vehicle.img = this.images[randColor.sportsImg];
+                vehicle.imgKey = randColor.sportsImg;
             } else if (type === 'sedan' && this.images[randColor.sedanImg]) {
                 vehicle.img = this.images[randColor.sedanImg];
+                vehicle.imgKey = randColor.sedanImg;
             } else {
                 vehicle.customColor = randColor.hex;
             }
@@ -337,6 +455,7 @@ class Game {
         {
             const redSports = new Vehicle(76.6 * TILE, 18.5 * TILE, 'sports', this.images);
             redSports.img = this.images['car_sports_red'];
+            redSports.imgKey = 'car_sports_red';
             redSports.angle = Math.PI / 2; // facing south
             redSports.ai.active = false;
             redSports.speed = 0;
@@ -345,12 +464,24 @@ class Game {
 
             const whiteSed = new Vehicle(77.3 * TILE, 18.5 * TILE, 'sedan', this.images);
             whiteSed.img = this.images['car_sedan_white'];
+            whiteSed.imgKey = 'car_sedan_white';
             whiteSed.angle = Math.PI / 2; // facing south
             whiteSed.ai.active = false;
             whiteSed.speed = 0;
             whiteSed.isParkingLotCar = true;
             this.vehicles.push(whiteSed);
+
+            const blueJeep = new Vehicle(78 * TILE, 18.5 * TILE, 'jeep', this.images);
+            blueJeep.img = this.images['car_jeep_blue'];
+            blueJeep.imgKey = 'car_jeep_blue';
+            blueJeep.angle = Math.PI / 2;
+            blueJeep.ai.active = false;
+            blueJeep.speed = 0;
+            blueJeep.isParkingLotCar = true;
+            this.vehicles.push(blueJeep);
         }
+
+        this.spawnSavedDrivewayVehicle();
 
         // NPCs
         const npcCharacters = ['business_man', 'beach_tourist', 'casual', 'jogger'].map(name => ({
@@ -371,7 +502,14 @@ class Game {
         // patrol cars deploy automatically from the station
 
         // Missions
-        this.missions = new MissionSystem();
+        this.missions = new MissionSystem(this.saveData.missions, {
+            onStateChange: missionState => this.persistMissionState(missionState),
+            onMissionComplete: (mission, player) => {
+                if (mission.id === 'first_ride' && player.inVehicle) {
+                    this.saveDrivewayVehicle(player.inVehicle, 'First Ride complete. Car saved at the safe house.');
+                }
+            },
+        });
 
         // Traffic lights
         this.trafficLights = new TrafficLightSystem(this.world.roadPositions);
@@ -500,6 +638,7 @@ class Game {
         if (this.missions.chatBox && this.missions.chatBox.active && Input.isDown('e')) {
             Input.keys['e'] = false;
             this.missions.chatBox.active = false;
+            if (this.missions.handleChatClosed) this.missions.handleChatClosed();
         }
 
         // Bank robbery check (before player update so E key can be consumed first)
@@ -507,7 +646,14 @@ class Game {
 
         // Update player
         const isShooting = this.player.weapons.fireCooldown > 0;
+        const previousVehicle = this.player.inVehicle;
         this.player.update(dt, this.world, this.vehicles, this.audio, this.particles);
+
+        if (this.isDrivewayUnlocked() &&
+            previousVehicle && previousVehicle !== this.player.inVehicle && !this.player.inVehicle &&
+            this.isNearDrivewaySaveZone(previousVehicle.x, previousVehicle.y)) {
+            this.saveDrivewayVehicle(previousVehicle, 'Vehicle parked and saved at the safe house.');
+        }
 
         // Update traffic lights
         this.trafficLights.update(dt);
@@ -518,14 +664,26 @@ class Game {
 
             // Wrecks stay in the scene as burnt-out shells — skip update, keep for rendering
             if (v.isWreck) continue;
-            // Remove non-wreck destroyed vehicles (non-police cars that just died)
-            if (v.health <= 0 && v.type !== 'helicopter' && v.type !== 'helicopter_police' && !v.isArmoredTarget) {
+            // If the player's current car is destroyed, resolve the explosion and player state
+            // before removing the vehicle so we never leave the player attached to a ghost car.
+            if (v === this.player.inVehicle && v.health <= 0) {
+                this.particles.explosion(v.x, v.y);
+                this.audio.playExplosion();
+                this.player.takeDamage(this.player.health + this.player.armor + 100);
+            }
+
+            if (v.health <= 0 && v.isDrivewaySaved) {
+                this.clearSavedDrivewayVehicle();
+            }
+
+            // Remove destroyed non-mission vehicles after any special death handling above.
+            if (v.health <= 0 && !v.isArmoredTarget) {
                 this.vehicles.splice(i, 1);
                 continue;
             }
 
             // Abandoned player car: despawn after 5 minutes and respawn elsewhere
-            if (v.wasPlayerDriven && !v.driver && !v.isParkingLotCar) {
+            if (v.wasPlayerDriven && !v.driver && !v.isParkingLotCar && !v.isDrivewaySaved) {
                 v.abandonedTimer = (v.abandonedTimer || 0) + dt;
                 if (v.abandonedTimer >= 300) {
                     this.vehicles.splice(i, 1);
@@ -556,7 +714,11 @@ class Game {
 
         // Vehicle ran over Darnell
         if (this.player.inVehicle && this.missions.darnell && this.missions.darnell.alive) {
-            if (Collision.dist(this.player.x, this.player.y, this.missions.darnell.x, this.missions.darnell.y) < 32) {
+            const canRunOverDarnell = this.missions.darnell.state !== 'walking_to_car' &&
+                this.missions.darnell.state !== 'walking_to_office';
+            if (canRunOverDarnell &&
+                Math.abs(this.player.inVehicle.speed) > 40 &&
+                Collision.dist(this.player.x, this.player.y, this.missions.darnell.x, this.missions.darnell.y) < 32) {
                 this.missions.darnell.alive = false;
                 this.particles.blood(this.missions.darnell.x, this.missions.darnell.y);
             }
@@ -895,9 +1057,6 @@ class Game {
         // Draw NPCs
         this.npcManager.draw(ctx, this.camera);
 
-        // Draw mission entities (Darnell, guards, RPG pickup)
-        this.missions.drawMissionEntities(ctx, this.images, this.player);
-
         // Draw player
         this.player.draw(ctx);
 
@@ -913,6 +1072,9 @@ class Game {
 
         // Draw special location overlays (on top of buildings)
         this._drawSpecialLocations(ctx);
+
+        // Draw mission entities after buildings so mission NPCs remain visible during scripted scenes
+        this.missions.drawMissionEntities(ctx, this.images, this.player);
 
         // Draw air vehicles (on top of buildings)
         for (const v of this.vehicles) {
@@ -1263,9 +1425,11 @@ class Game {
                             const v = this.player.inVehicle;
                             if (v.type === 'sports' && this.images[sc.sportsImg]) {
                                 v.img = this.images[sc.sportsImg];
+                                v.imgKey = sc.sportsImg;
                                 v.customColor = null;
                             } else if (v.type === 'sedan' && this.images[sc.sedanImg]) {
                                 v.img = this.images[sc.sedanImg];
+                                v.imgKey = sc.sedanImg;
                                 v.customColor = null;
                             } else {
                                 v.customColor = sc.hex;
@@ -1554,6 +1718,28 @@ class Game {
         ctx.fillStyle = '#ffaa44';
         ctx.font = '10px Arial';
         ctx.fillText('Drive in with a car', px, py + 8);
+        ctx.textBaseline = 'alphabetic';
+        ctx.restore();
+
+        // ---- Safe House ----
+        const shx = SAFE_HOUSE_MARKER_PX.x;
+        const shy = SAFE_HOUSE_MARKER_PX.y;
+        const shPulse = Math.sin(Date.now() / 320) * 0.5 + 0.5;
+        ctx.save();
+        ctx.fillStyle = `rgba(0, 170, 255, ${0.18 + 0.22 * shPulse})`;
+        ctx.fillRect(shx - TILE, shy - TILE / 2, 2 * TILE, TILE);
+        ctx.strokeStyle = `rgba(80, 220, 255, ${0.55 + 0.45 * shPulse})`;
+        ctx.lineWidth = 2;
+        ctx.shadowColor = 'rgba(0, 210, 255, 0.9)';
+        ctx.shadowBlur = 10 + 10 * shPulse;
+        ctx.strokeRect(shx - TILE, shy - TILE / 2, 2 * TILE, TILE);
+        ctx.fillStyle = '#d9fbff';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0, 210, 255, 0.95)';
+        ctx.shadowBlur = 8 + 6 * shPulse;
+        ctx.fillText('SAFE HOUSE', shx, shy);
         ctx.textBaseline = 'alphabetic';
         ctx.restore();
 
@@ -1857,7 +2043,7 @@ class Game {
         ctx.fillText('S', psx, psy);
 
         // Safe House blip
-        const shx = offX + (15 * 64 + 64 * 1.5) * scale, shy = offY + (6 * 64 - 64 * 0.5) * scale;
+        const shx = offX + SAFE_HOUSE_PX.x * scale, shy = offY + SAFE_HOUSE_PX.y * scale;
         ctx.fillStyle = '#8b4513';
         ctx.beginPath(); ctx.arc(shx, shy, 5, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#fff'; ctx.font = 'bold 6px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

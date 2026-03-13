@@ -263,6 +263,12 @@ class Player {
         ctx.save();
         ctx.translate(this.x, this.y);
 
+        ctx.strokeStyle = 'rgba(255, 140, 0, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 10, 8, 0, Math.PI * 2);
+        ctx.stroke();
+
         // Swimming ring effect (drawn before sprite, in un-rotated space)
         if (this.isSwimming) {
             ctx.strokeStyle = 'rgba(30, 100, 255, 0.7)';
@@ -272,7 +278,7 @@ class Player {
             ctx.stroke();
         }
 
-        ctx.rotate(this.angle + Math.PI / 2);
+        ctx.rotate(this.angle - Math.PI / 2);
 
         if (this.img && this.img.complete) {
             const scale = 0.07;

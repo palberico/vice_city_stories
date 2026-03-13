@@ -26,7 +26,8 @@ const TILE_COLORS = {
 };
 
 // Special fixed locations — placed inside city blocks between road grid lines
-const HOSPITAL_PX = { x: 45 * TILE + TILE / 2, y: 46 * TILE + TILE / 2 }; // center of 5x5 hospital (HBX+2.5, HBY+2.5)
+const HOSPITAL_PX = { x: 45 * TILE, y: 46 * TILE }; // center of 4x4 hospital block
+const HOSPITAL_DOOR_PX = { x: 45 * TILE, y: 48 * TILE - 8 }; // front door at the south face of the hospital
 const STATION_PX = { x: 34 * TILE + TILE / 2, y: 32 * TILE + TILE / 2 }; // center of 5x5 police station
 const STATION_PARKING_PX = { x: 34 * TILE + TILE / 2, y: 35 * TILE + TILE / 2 }; // one tile south of station
 // Designated patrol car spawn spots — one car per tile, checked before spawning
@@ -34,8 +35,15 @@ const STATION_PATROL_SPOTS = [
     { tx: 29, ty: 33 }, { tx: 30, ty: 33 }, { tx: 31, ty: 33 },
     { tx: 29, ty: 31 }, { tx: 30, ty: 31 }, { tx: 31, ty: 31 },
 ];
+const SAFE_HOUSE_PX = { x: 16.5 * TILE, y: 5.5 * TILE }; // center of the 3x3 safe house building
+const SAFE_HOUSE_SPAWN_PX = { x: 18 * TILE + TILE / 2, y: 6 * TILE + TILE / 2 }; // player start tile at 18,6
+const SAFE_HOUSE_MARKER_PX = { x: 16.5 * TILE, y: 7.5 * TILE }; // same zone, shifted 0.5 tile right for better alignment
+const SAFE_HOUSE_DRIVEWAY_PX = { x: 18.5 * TILE, y: 4.5 * TILE };
+const HOSPITAL_PICKUP_PX = { x: 44 * TILE, y: 50 * TILE };
+const ATTORNEY_DROP_PX = { x: 76 * TILE, y: 22 * TILE };
+const ATTORNEY_OFFICE_PX = { x: 71 * TILE, y: 21 * TILE };
 const PAY_SPRAY_PX = { x: 16.5 * TILE, y: 63 * TILE };
-const HEAL_PX = { x: 45 * TILE + TILE / 2, y: 49 * TILE + TILE / 2 }; // one tile south of hospital
+const HEAL_PX = { x: 45 * TILE, y: 49.5 * TILE }; // two tiles south of hospital
 const LAWYER_PX = { x: 73 * TILE + TILE / 2, y: 19 * TILE }; // center of 5x4 lawyer building
 const BANK_PX = { x: 56 * TILE, y: 29 * TILE }; // center of 4-tile robbery zone (SW corner of tile 56,28)
 
@@ -323,10 +331,9 @@ class World {
             }
         }
 
-        // ---- Hospital block — SW corner at tile (43,48), 5x5 ----
-        // Clear random buildings and place a single white hospital building
+        // ---- Hospital block — 4x4, with a 4x4 skyscraper directly north ----
         {
-            const HBX = 43, HBY = 44, HBW = 5, HBH = 5;
+            const HBX = 43, HBY = 44, HBW = 4, HBH = 4;
             this.buildings = this.buildings.filter(b => {
                 const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
                 const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
@@ -344,7 +351,27 @@ class World {
                 windows: true, roofColor: '#d0d8e0',
                 isHospital: true
             });
+        }
 
+        {
+            const SKX = 43, SKY = 40, SKW = 4, SKH = 4;
+            this.buildings = this.buildings.filter(b => {
+                const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
+                const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
+                return !(br >= SKX && bl < SKX + SKW && bb >= SKY && bt < SKY + SKH);
+            });
+            for (let ty = SKY; ty < SKY + SKH; ty++) {
+                for (let tx = SKX; tx < SKX + SKW; tx++) {
+                    this.tiles[ty][tx] = T.BUILDING;
+                }
+            }
+            this.buildings.push({
+                x: SKX * TILE, y: SKY * TILE,
+                w: SKW * TILE, h: SKH * TILE,
+                color: '#728099', height: 80,
+                windows: true, roofColor: '#5f6b80',
+                isSkyscraper1: true
+            });
         }
 
         // ---- Police station block — SW corner at tile (32,34), 5x5 ----
@@ -701,6 +728,14 @@ class World {
             ['29,29', 'roads/parking/police_parking'],
             ['30,29', 'roads/parking/police_parking'],
             ['31,29', 'roads/parking/police_parking'],
+            ['44,48', 'roads/parking/ambulance'],
+            ['45,48', 'roads/parking/ambulance'],
+            ['43,48', 'roads/asphalt_blank2'],
+            ['46,48', 'roads/asphalt_blank2'],
+            ['47,48', 'roads/asphalt_blank2'],
+            ['48,48', 'roads/asphalt_blank2'],
+            ['49,48', 'roads/er'],
+            ['50,48', 'roads/asphalt_blank2'],
             ['75,14', 'landscape/grass'],
             ['75,15', 'landscape/grass'],
             ['75,16', 'landscape/grass'],
@@ -1140,6 +1175,11 @@ class World {
 
             if (b.isHospital && images && images['hospital'] && images['hospital'].complete) {
                 ctx.drawImage(images['hospital'], b.x, b.y, b.w, b.h);
+                continue;
+            }
+
+            if (b.isSkyscraper1 && images && images['skyscraper1'] && images['skyscraper1'].complete) {
+                ctx.drawImage(images['skyscraper1'], b.x, b.y, b.w, b.h);
                 continue;
             }
 

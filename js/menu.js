@@ -113,12 +113,19 @@ class MenuSystem {
     drawPhone(ctx, canvas, missions) {
         const W = canvas.width;
         const H = canvas.height;
+        const availableMissions = missions.missions.filter(m => !m.completed && m.available && m !== missions.activeMission);
+        const completedCount = missions.missions.filter(m => m.completed).length;
+        const lockedCount = missions.missions.filter(m => !m.completed && !m.available).length;
 
         // Phone frame
-        const pw = 260;
-        const ph = 400;
+        const pw = Math.min(360, W - 32);
+        const ph = Math.min(640, H - 32);
         const px = W / 2 - pw / 2;
         const py = H / 2 - ph / 2;
+        const screenX = px + 12;
+        const screenY = py + 44;
+        const screenW = pw - 24;
+        const screenH = ph - 88;
 
         ctx.fillStyle = 'rgba(0,0,0,0.5)';
         ctx.fillRect(0, 0, W, H);
@@ -134,40 +141,173 @@ class MenuSystem {
 
         // Screen
         ctx.fillStyle = '#0f0f23';
-        ctx.fillRect(px + 10, py + 40, pw - 20, ph - 80);
+        ctx.fillRect(screenX, screenY, screenW, screenH);
 
         // Title
         ctx.fillStyle = '#ff1493';
         ctx.font = 'bold 16px "Segoe UI", Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('📱 MISSIONS', W / 2, py + 60);
+        ctx.fillText('MISSIONS', W / 2, py + 28);
 
-        // Mission list
+        // Screen content
+        let cursorY = screenY + 18;
+        const cardX = screenX + 12;
+        const cardW = screenW - 24;
+
         ctx.textAlign = 'left';
-        ctx.font = '13px "Segoe UI", Arial';
-        let yOffset = py + 85;
-        for (const mission of missions.missions) {
-            if (mission.completed) {
-                ctx.fillStyle = '#44aa44';
-                ctx.fillText(`✓ ${mission.name} — COMPLETED`, px + 20, yOffset);
-            } else if (missions.activeMission === mission) {
-                ctx.fillStyle = '#ffaa00';
-                ctx.fillText(`► ${mission.name} — IN PROGRESS`, px + 20, yOffset);
-            } else if (mission.available) {
-                ctx.fillStyle = '#aaaacc';
-                ctx.fillText(`○ ${mission.name} — $${mission.reward}`, px + 20, yOffset);
+        ctx.fillStyle = '#7ed9ff';
+        ctx.font = 'bold 11px "Segoe UI", Arial';
+        ctx.fillText('JOB TRACKER', cardX, cursorY);
+        cursorY += 10;
+
+        if (missions.activeMission) {
+            const active = missions.activeMission;
+            const activeCardH = 112;
+            ctx.fillStyle = 'rgba(255, 170, 0, 0.14)';
+            ctx.strokeStyle = 'rgba(255, 190, 60, 0.65)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(cardX, cursorY, cardW, activeCardH, 12);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffd26a';
+            ctx.font = 'bold 10px "Segoe UI", Arial';
+            ctx.fillText('NOW PLAYING', cardX + 12, cursorY + 18);
+            ctx.fillStyle = '#fff1c4';
+            ctx.font = 'bold 17px "Segoe UI", Arial';
+            ctx.fillText(active.name, cardX + 12, cursorY + 40);
+            ctx.fillStyle = '#c5c8de';
+            ctx.font = '11px "Segoe UI", Arial';
+            this.drawWrappedText(ctx, active.description, cardX + 12, cursorY + 58, cardW - 24, 14, 2);
+
+            const step = active.steps && active.steps[missions.currentStep];
+            const footerY = cursorY + activeCardH - 24;
+            if (step) {
+                ctx.fillStyle = '#ffb347';
+                ctx.font = 'bold 10px "Segoe UI", Arial';
+                ctx.fillText('NEXT', cardX + 12, footerY);
+                ctx.fillStyle = '#f5f7ff';
+                ctx.font = '10px "Segoe UI", Arial';
+                this.drawWrappedText(ctx, step.text, cardX + 46, footerY, cardW - 58, 12, 2);
+            } else {
+                ctx.fillStyle = '#f5f7ff';
+                ctx.font = '10px "Segoe UI", Arial';
+                ctx.fillText('Wrapping up mission...', cardX + 12, footerY);
             }
-            ctx.fillStyle = '#666';
-            ctx.font = '10px "Segoe UI", Arial';
-            ctx.fillText(mission.description, px + 32, yOffset + 14);
-            ctx.font = '13px "Segoe UI", Arial';
-            yOffset += 42;
+            cursorY += activeCardH + 18;
+        } else {
+            const idleCardH = 64;
+            ctx.fillStyle = 'rgba(0, 180, 255, 0.10)';
+            ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(cardX, cursorY, cardW, idleCardH, 12);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#d9fbff';
+            ctx.font = 'bold 14px "Segoe UI", Arial';
+            ctx.fillText('No active mission', cardX + 12, cursorY + 24);
+            ctx.fillStyle = '#9ea6c8';
+            ctx.font = '11px "Segoe UI", Arial';
+            ctx.fillText('Head to a mission marker to pick up new work.', cardX + 12, cursorY + 44);
+            cursorY += idleCardH + 18;
         }
+
+        ctx.fillStyle = '#7ed9ff';
+        ctx.font = 'bold 11px "Segoe UI", Arial';
+        ctx.fillText('AVAILABLE JOBS', cardX, cursorY);
+        cursorY += 12;
+
+        const listBottom = screenY + screenH - 86;
+        const itemGap = 8;
+        for (const mission of availableMissions) {
+            const itemH = 58;
+            if (cursorY + itemH > listBottom) break;
+
+            ctx.fillStyle = 'rgba(150, 160, 220, 0.10)';
+            ctx.strokeStyle = 'rgba(140, 150, 210, 0.35)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.roundRect(cardX, cursorY, cardW, itemH, 10);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#dfe3ff';
+            ctx.font = 'bold 13px "Segoe UI", Arial';
+            ctx.fillText(mission.name, cardX + 12, cursorY + 18);
+            ctx.fillStyle = '#66ffb3';
+            ctx.font = 'bold 10px "Segoe UI", Arial';
+            ctx.textAlign = 'right';
+            ctx.fillText(`$${mission.reward}`, cardX + cardW - 12, cursorY + 18);
+            ctx.textAlign = 'left';
+
+            ctx.fillStyle = '#9ea6c8';
+            ctx.font = '10px "Segoe UI", Arial';
+            this.drawWrappedText(ctx, mission.description, cardX + 12, cursorY + 35, cardW - 24, 12, 2);
+            cursorY += itemH + itemGap;
+        }
+
+        // Footer stats
+        const chipY = screenY + screenH - 56;
+        this.drawPhoneChip(ctx, cardX, chipY, 92, 28, '#44aa44', `${completedCount} DONE`);
+        this.drawPhoneChip(ctx, cardX + 100, chipY, 92, 28, '#6677aa', `${lockedCount} LOCKED`);
+        this.drawPhoneChip(ctx, cardX + 200, chipY, cardW - 200, 28, '#00bcd4', `${availableMissions.length} OPEN`);
 
         // Close hint
         ctx.fillStyle = '#888';
         ctx.font = '12px "Segoe UI", Arial';
         ctx.textAlign = 'center';
         ctx.fillText('Press TAB to close', W / 2, py + ph - 25);
+    }
+
+    drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = Infinity) {
+        const words = String(text || '').split(/\s+/).filter(Boolean);
+        const lines = [];
+        let line = '';
+
+        for (const word of words) {
+            const test = line ? `${line} ${word}` : word;
+            if (ctx.measureText(test).width <= maxWidth || !line) {
+                line = test;
+            } else {
+                lines.push(line);
+                line = word;
+                if (lines.length >= maxLines) break;
+            }
+        }
+
+        if (lines.length < maxLines && line) lines.push(line);
+
+        if (words.length > 0 && lines.length === maxLines) {
+            const consumed = lines.join(' ').split(/\s+/).filter(Boolean).length;
+            if (consumed < words.length) {
+                let truncated = lines[lines.length - 1];
+                while (truncated.length > 0 && ctx.measureText(`${truncated}...`).width > maxWidth) {
+                    truncated = truncated.slice(0, -1);
+                }
+                lines[lines.length - 1] = `${truncated.trimEnd()}...`;
+            }
+        }
+
+        lines.forEach((wrappedLine, index) => {
+            ctx.fillText(wrappedLine, x, y + index * lineHeight);
+        });
+    }
+
+    drawPhoneChip(ctx, x, y, w, h, color, label) {
+        ctx.fillStyle = `${color}22`;
+        ctx.strokeStyle = `${color}aa`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, 999);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#f4f7ff';
+        ctx.font = 'bold 10px "Segoe UI", Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, x + w / 2, y + h / 2);
+        ctx.textBaseline = 'alphabetic';
     }
 }

@@ -57,3 +57,7 @@ npx serve .
 - [ ] **Animated Minimap Blips** — Pulse effect on mission markers; red blips for active police pursuit.
 - [ ] **Screen Shake** — Brief canvas `translate` jitter on explosions and crashes.
 - [ ] **Death/Respawn Animation** — Fade to black → "Wasted" text → fade in at hospital instead of instant respawn.
+
+High Jinx Mission
+
+When mission one is complete, this will unlock mission 2, "High Jinx". The mission icon will appear on tile 34,26, Darnell will be standing in tile 35,26. When the player activates a mission, a chatbox will open. Darnell with tell the player that a "dumb" cop forgets to close the gate to the helicopter from time to time (Note, the gate to the helipad spawns as closed and stays closed for 3 minutes). 
