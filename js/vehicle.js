@@ -32,6 +32,7 @@ const VEHICLE_TYPES = {
     motorcycle: { name: 'PCJ-600', topSpeed: 480, accel: 320, handling: 4.0, braking: 250, w: 14, h: 30, color: '#333333', img: 'motorcycle', spriteRot: Math.PI / 2 },
     helicopter: { name: 'Maverick', topSpeed: 349, accel: 150, handling: 1.5, braking: 100, w: 40, h: 40, color: '#990000', img: 'helicopter', spriteRot: Math.PI / 2 },
     helicopter_police: { name: 'Police Maverick', topSpeed: 349, accel: 150, handling: 1.5, braking: 100, w: 40, h: 40, color: '#112244', img: 'helicopter_police', spriteRot: Math.PI / 2 },
+    box_truck: { name: 'Boxville', topSpeed: 180, accel: 110, handling: 1.3, braking: 190, w: 34, h: 72, color: '#2f8f4e', img: 'truck_box_green', spriteRot: -Math.PI / 2, spriteScale: 4.2 },
     armored: { name: 'Securicar', topSpeed: 120, accel: 80, handling: 1.0, braking: 150, w: 32, h: 58, color: '#cccccc', img: 'armored_car', spriteRot: Math.PI / 2 }
 };
 

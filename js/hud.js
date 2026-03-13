@@ -112,12 +112,10 @@ class HUD {
 
             // Radio station
             const stations = ['♫ Synthwave FM', '♫ Vice Beats', '♫ Neon Dance'];
-            if (audio.radioPlaying) {
-                ctx.fillStyle = '#ffaa00';
-                ctx.font = '11px "Segoe UI", Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(stations[audio.radioStation] + '  [R] Change', W / 2, H - 70);
-            }
+            ctx.fillStyle = audio.radioPlaying ? '#ffaa00' : '#888';
+            ctx.font = '11px "Segoe UI", Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${audio.radioPlaying ? stations[audio.radioStation] : 'Radio Off'}  [R] Change`, W / 2, H - 70);
         }
 
         // ---- Mission Objective ----

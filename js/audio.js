@@ -10,6 +10,7 @@ class AudioEngine {
         this.currentMusic = null;
         this.radioStation = 0;
         this.radioPlaying = false;
+        this.radioGain = null;
         this.initialized = false;
     }
 
@@ -177,7 +178,7 @@ class AudioEngine {
     }
 
     // --- MUSIC / RADIO ---
-    _createSynthNote(freq, startTime, duration, type = 'sawtooth', vol = 0.1) {
+    _createSynthNote(freq, startTime, duration, type = 'sawtooth', vol = 0.1, output = this.musicGain) {
         const osc = this.ctx.createOscillator();
         osc.type = type;
         osc.frequency.value = freq;
@@ -188,13 +189,13 @@ class AudioEngine {
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.frequency.value = 1500;
-        osc.connect(filter).connect(gain).connect(this.musicGain);
+        osc.connect(filter).connect(gain).connect(output);
         osc.start(startTime);
         osc.stop(startTime + duration + 0.05);
         return osc;
     }
 
-    _playDrumHit(startTime) {
+    _playDrumHit(startTime, output = this.musicGain) {
         const noise = this.ctx.createBufferSource();
         const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.1, this.ctx.sampleRate);
         const data = buf.getChannelData(0);
@@ -203,32 +204,51 @@ class AudioEngine {
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(0.15, startTime);
         gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.1);
-        noise.connect(gain).connect(this.musicGain);
+        noise.connect(gain).connect(output);
         noise.start(startTime);
     }
 
-    _playKick(startTime) {
+    _playKick(startTime, output = this.musicGain) {
         const osc = this.ctx.createOscillator();
         osc.frequency.setValueAtTime(150, startTime);
         osc.frequency.exponentialRampToValueAtTime(50, startTime + 0.1);
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(0.4, startTime);
         gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.15);
-        osc.connect(gain).connect(this.musicGain);
+        osc.connect(gain).connect(output);
         osc.start(startTime);
         osc.stop(startTime + 0.2);
     }
 
     startRadio(station) {
+        if (!this.ctx) return;
         this.stopRadio();
         this.radioStation = station;
         this.radioPlaying = true;
+        this.stopAmbientMusic();
+        this.radioGain = this.ctx.createGain();
+        this.radioGain.gain.value = 1;
+        this.radioGain.connect(this.musicGain);
         this._loopRadio();
+    }
+
+    cycleRadio() {
+        if (!this.ctx) return;
+        if (!this.radioPlaying) {
+            this.startRadio(0);
+            return;
+        }
+        if (this.radioStation >= 2) {
+            this.stopRadio();
+            return;
+        }
+        this.startRadio(this.radioStation + 1);
     }
 
     _loopRadio() {
         if (!this.radioPlaying || !this.ctx) return;
         const now = this.ctx.currentTime;
+        const output = this.radioGain || this.musicGain;
         const bpm = [128, 100, 140][this.radioStation] || 120;
         const beatLen = 60 / bpm;
         const barLen = beatLen * 4;
@@ -239,21 +259,21 @@ class AudioEngine {
             const notes = [65.41, 82.41, 98.00, 73.42]; // bass C2, E2, G2, D2
             const melody = [261.63, 329.63, 392.00, 349.23, 293.66, 261.63, 329.63, 392.00];
             for (let bar = 0; bar < bars; bar++) {
-                this._createSynthNote(notes[bar % notes.length], now + bar * barLen, barLen * 0.9, 'sawtooth', 0.08);
+                this._createSynthNote(notes[bar % notes.length], now + bar * barLen, barLen * 0.9, 'sawtooth', 0.08, output);
                 for (let beat = 0; beat < 4; beat++) {
-                    this._playKick(now + bar * barLen + beat * beatLen);
-                    if (beat % 2 === 1) this._playDrumHit(now + bar * barLen + beat * beatLen);
-                    this._createSynthNote(melody[(bar * 4 + beat) % melody.length] * 2, now + bar * barLen + beat * beatLen, beatLen * 0.4, 'square', 0.03);
+                    this._playKick(now + bar * barLen + beat * beatLen, output);
+                    if (beat % 2 === 1) this._playDrumHit(now + bar * barLen + beat * beatLen, output);
+                    this._createSynthNote(melody[(bar * 4 + beat) % melody.length] * 2, now + bar * barLen + beat * beatLen, beatLen * 0.4, 'square', 0.03, output);
                 }
             }
         } else if (this.radioStation === 1) {
             // Hip hop
             const bassNotes = [55, 55, 73.42, 65.41];
             for (let bar = 0; bar < bars; bar++) {
-                this._createSynthNote(bassNotes[bar % bassNotes.length], now + bar * barLen, barLen * 0.5, 'triangle', 0.12);
+                this._createSynthNote(bassNotes[bar % bassNotes.length], now + bar * barLen, barLen * 0.5, 'triangle', 0.12, output);
                 for (let beat = 0; beat < 4; beat++) {
-                    if (beat === 0 || beat === 2) this._playKick(now + bar * barLen + beat * beatLen);
-                    if (beat === 1 || beat === 3) this._playDrumHit(now + bar * barLen + beat * beatLen);
+                    if (beat === 0 || beat === 2) this._playKick(now + bar * barLen + beat * beatLen, output);
+                    if (beat === 1 || beat === 3) this._playDrumHit(now + bar * barLen + beat * beatLen, output);
                 }
             }
         } else {
@@ -261,10 +281,10 @@ class AudioEngine {
             const chords = [[130.81, 164.81, 196], [146.83, 174.61, 220], [164.81, 196, 246.94], [130.81, 164.81, 196]];
             for (let bar = 0; bar < bars; bar++) {
                 const chord = chords[bar % chords.length];
-                chord.forEach(f => this._createSynthNote(f, now + bar * barLen, barLen * 0.7, 'sawtooth', 0.04));
+                chord.forEach(f => this._createSynthNote(f, now + bar * barLen, barLen * 0.7, 'sawtooth', 0.04, output));
                 for (let beat = 0; beat < 8; beat++) {
-                    this._playKick(now + bar * barLen + beat * beatLen / 2);
-                    if (beat % 2 === 1) this._playDrumHit(now + bar * barLen + beat * beatLen / 2);
+                    this._playKick(now + bar * barLen + beat * beatLen / 2, output);
+                    if (beat % 2 === 1) this._playDrumHit(now + bar * barLen + beat * beatLen / 2, output);
                 }
             }
         }
@@ -275,6 +295,12 @@ class AudioEngine {
     stopRadio() {
         this.radioPlaying = false;
         if (this._radioTimeout) clearTimeout(this._radioTimeout);
+        this._radioTimeout = null;
+        if (this.radioGain) {
+            try { this.radioGain.disconnect(); } catch (err) {}
+            this.radioGain = null;
+        }
+        if (this.ctx) this.startAmbientMusic();
     }
 
     startAmbientMusic() {

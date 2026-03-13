@@ -16,7 +16,6 @@ class Player {
         this.angle = 0;
         this.inVehicle = null;
         this.weapons = new WeaponManager();
-        this.weapons.pickupWeapon('pistol', 30);
         this.img = img;
         this.footstepTimer = 0;
         this.moving = false;
@@ -60,8 +59,12 @@ class Player {
             // Radio controls
             if (Input.isDown('r')) {
                 Input.keys['r'] = false; // consume
-                const station = (audio.radioStation + 1) % 3;
-                audio.startRadio(station);
+                if (audio && typeof audio.cycleRadio === 'function') {
+                    audio.cycleRadio();
+                } else if (audio && typeof audio.startRadio === 'function') {
+                    const station = ((audio.radioStation || 0) + 1) % 3;
+                    audio.startRadio(station);
+                }
             }
 
             // Tire smoke when drifting

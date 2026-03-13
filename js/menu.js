@@ -7,6 +7,8 @@ class MenuSystem {
         this.logoImg = null;
         this.fadeAlpha = 1;
         this.phoneOpen = false;
+        this.devMissionOpen = false;
+        this.devMissionIndex = 0;
     }
 
     setLogo(img) {
@@ -273,6 +275,55 @@ class MenuSystem {
         ctx.font = '12px "Segoe UI", Arial';
         ctx.textAlign = 'center';
         ctx.fillText('Press TAB to close', W / 2, py + ph - 25);
+    }
+
+    drawDevMissionPicker(ctx, canvas, missions) {
+        const W = canvas.width;
+        const H = canvas.height;
+        const pickerW = Math.min(520, W - 40);
+        const pickerH = Math.min(640, H - 40);
+        const px = W / 2 - pickerW / 2;
+        const py = H / 2 - pickerH / 2;
+        const list = missions.missions;
+
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#111827';
+        ctx.fillRect(px, py, pickerW, pickerH);
+        ctx.strokeStyle = '#ff8800';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px, py, pickerW, pickerH);
+
+        ctx.fillStyle = '#ffb347';
+        ctx.font = 'bold 18px "Segoe UI", Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('DEV MISSION PICKER', W / 2, py + 28);
+
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '11px "Segoe UI", Arial';
+        ctx.fillText('Shift+Tab hidden tool', W / 2, py + 48);
+
+        let y = py + 78;
+        for (let i = 0; i < list.length; i++) {
+            const mission = list[i];
+            const selected = i === this.devMissionIndex;
+            ctx.fillStyle = selected ? 'rgba(255,136,0,0.22)' : 'rgba(255,255,255,0.04)';
+            ctx.fillRect(px + 14, y - 16, pickerW - 28, 34);
+            ctx.fillStyle = selected ? '#fff3d1' : '#d1d5db';
+            ctx.font = selected ? 'bold 13px "Segoe UI", Arial' : '12px "Segoe UI", Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`${i + 1}. ${mission.name}`, px + 26, y);
+            ctx.textAlign = 'right';
+            ctx.fillStyle = mission.completed ? '#44aa44' : mission.available ? '#7ed9ff' : '#8892a6';
+            ctx.fillText(mission.completed ? 'DONE' : mission.available ? 'OPEN' : 'LOCKED', px + pickerW - 26, y);
+            y += 40;
+            if (y > py + pickerH - 60) break;
+        }
+
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '12px "Segoe UI", Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Up/Down to choose, Enter to start, Shift+Tab to close', W / 2, py + pickerH - 20);
     }
 
     drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = Infinity) {

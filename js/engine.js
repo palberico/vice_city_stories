@@ -152,6 +152,23 @@ class Game {
             missionState.some(m => m.id === 'first_ride' && m.completed);
     }
 
+    isAmmuNationUnlocked() {
+        const missionState = (this.missions && this.missions.getMissionState && this.missions.getMissionState())
+            || (this.saveData && this.saveData.missions)
+            || [];
+        return Array.isArray(missionState) &&
+            missionState.some(m => m.id === 'the_pickup' && m.completed);
+    }
+
+    isPaySprayUnlocked() {
+        return (this.missions && this.missions.activeMission && this.missions.activeMission.id === 'the_pickup')
+            || this.isAmmuNationUnlocked();
+    }
+
+    isHelicopterVehicle(vehicle) {
+        return !!(vehicle && typeof vehicle.type === 'string' && vehicle.type.includes('helicopter'));
+    }
+
     captureVehicleState(vehicle) {
         return {
             type: vehicle.type,
@@ -216,7 +233,7 @@ class Game {
     async loadAssets() {
         const assetList = [
             'player', 'car_sports', 'car_sedan', 'car_police', 'motorcycle', 'logo',
-            'helicopter', 'helicopter_police', 'propeller', 'armored_car', 'npc_casual_front',
+            'helicopter', 'helicopter_police', 'propeller', 'armored_car', 'truck_box_green', 'truck_box_red', 'truck_box_blue', 'npc_casual_front',
             'helicopter_red', 'helicopter_green', 'helicopter_blue',
             'car_jeep_blue',
             'car_sports_red', 'car_sports_blue', 'car_sports_green', 'car_sports_white',
@@ -275,6 +292,9 @@ class Game {
             'helicopter_police': 'assets/vehicles/air/helicopter_police.png',
             'propeller': 'assets/vehicles/air/propeller.png',
             'armored_car': 'assets/armored_car.png',
+            'truck_box_green': 'assets/vehicles/ground/trucks/truck_box_green.png',
+            'truck_box_red': 'assets/vehicles/ground/trucks/truck_box_red.png',
+            'truck_box_blue': 'assets/vehicles/ground/trucks/truck_box_blue.png',
             'helicopter_red': 'assets/vehicles/air/colors/helicopter_red.png',
             'helicopter_green': 'assets/vehicles/air/colors/helicopter_green.png',
             'helicopter_blue': 'assets/vehicles/air/colors/helicopter_blue.png',
@@ -336,6 +356,7 @@ class Game {
         const spriteNames = [
             'player', 'car_sports', 'car_sedan', 'car_police', 'motorcycle',
             'helicopter', 'helicopter_police', 'propeller', 'armored_car',
+            'truck_box_green', 'truck_box_red', 'truck_box_blue',
             'car_jeep_blue',
             'helicopter_red', 'helicopter_green', 'helicopter_blue',
             'car_jeep_blue',
@@ -436,17 +457,12 @@ class Game {
         this.camera.x = sp.x;
         this.camera.y = sp.y;
 
-        // Give player some starting weapons
-        this.player.weapons.pickupWeapon('smg', 60);
-        this.player.weapons.pickupWeapon('shotgun', 15);
-        this.player.weapons.currentWeapon = 'pistol';
-
         // Define spray colors early so they can be used for vehicle spawning
         this.sprayColors = [
-            { name: 'Red', hex: '#cc2200', sportsImg: 'car_sports_red', sedanImg: 'car_sedan_red' },
-            { name: 'Blue', hex: '#2255cc', sportsImg: 'car_sports_blue', sedanImg: 'car_sedan_blue' },
-            { name: 'Green', hex: '#228833', sportsImg: 'car_sports_green', sedanImg: 'car_sedan_green' },
-            { name: 'White', hex: '#dddddd', sportsImg: 'car_sports_white', sedanImg: 'car_sedan_white' },
+            { name: 'Red', hex: '#cc2200', sportsImg: 'car_sports_red', sedanImg: 'car_sedan_red', truckImg: 'truck_box_red' },
+            { name: 'Blue', hex: '#2255cc', sportsImg: 'car_sports_blue', sedanImg: 'car_sedan_blue', truckImg: 'truck_box_blue' },
+            { name: 'Green', hex: '#228833', sportsImg: 'car_sports_green', sedanImg: 'car_sedan_green', truckImg: 'truck_box_green' },
+            { name: 'White', hex: '#dddddd', sportsImg: 'car_sports_white', sedanImg: 'car_sedan_white', truckImg: null },
         ];
 
         // Spawn vehicles with randomised colors
@@ -551,6 +567,9 @@ class Game {
                 if (mission.id === 'first_ride' && player.inVehicle) {
                     this.saveDrivewayVehicle(player.inVehicle, 'First Ride complete. Car saved at the safe house.');
                 }
+                if (mission.id === 'the_pickup') {
+                    this.setupStores();
+                }
             },
         });
 
@@ -562,11 +581,7 @@ class Game {
         this.hud = new HUD();
 
         // Weapon Stores (Ammu-Nation)
-        this.stores = [
-            { x: 14 * TILE + TILE / 2, y: 15 * TILE + TILE / 2, name: 'Ammu-Nation NorthWest' },
-            { x: 69 * TILE + TILE / 2, y: 39 * TILE + TILE / 2, name: 'Ammu-Nation MiddleEast' },
-            { x: 45 * TILE + TILE / 2, y: 63 * TILE + TILE / 2, name: 'Ammu-Nation SouthWest' }
-        ];
+        this.setupStores();
         this.storeOpen = false;
         this.storeIndex = -1;
         this.storeCooldown = 0;
@@ -586,6 +601,18 @@ class Game {
         this.audio.startAmbientMusic();
 
         this.state = 'playing';
+    }
+
+    setupStores() {
+        this.stores = this.isAmmuNationUnlocked() ? [
+            { x: 14 * TILE + TILE / 2, y: 15 * TILE + TILE / 2, name: 'Ammu-Nation NorthWest' },
+            { x: 69 * TILE + TILE / 2, y: 39 * TILE + TILE / 2, name: 'Ammu-Nation MiddleEast' },
+            { x: 45 * TILE + TILE / 2, y: 63 * TILE + TILE / 2, name: 'Ammu-Nation SouthWest' }
+        ] : [];
+        if (!this.stores.length) {
+            this.storeOpen = false;
+            this.storeIndex = -1;
+        }
     }
 
     gameLoop(timestamp) {
@@ -636,6 +663,39 @@ class Game {
         }
     }
 
+    updateDevMissionPicker() {
+        const missionCount = this.missions && this.missions.missions ? this.missions.missions.length : 0;
+        if (missionCount <= 0) return;
+
+        this.menu.devMissionIndex = Math.max(0, Math.min(this.menu.devMissionIndex, missionCount - 1));
+
+        if (Input.isDown('arrowup') || Input.isDown('w')) {
+            Input.keys['arrowup'] = false;
+            Input.keys['w'] = false;
+            this.menu.devMissionIndex = (this.menu.devMissionIndex - 1 + missionCount) % missionCount;
+        }
+
+        if (Input.isDown('arrowdown') || Input.isDown('s')) {
+            Input.keys['arrowdown'] = false;
+            Input.keys['s'] = false;
+            this.menu.devMissionIndex = (this.menu.devMissionIndex + 1) % missionCount;
+        }
+
+        if (Input.isDown('enter')) {
+            Input.keys['enter'] = false;
+            const started = this.missions.debugStartMission(
+                this.menu.devMissionIndex,
+                this.audio,
+                this.vehicles,
+                this.images
+            );
+            if (started) {
+                this.menu.devMissionOpen = false;
+                this.menu.phoneOpen = false;
+            }
+        }
+    }
+
     updateGame(dt) {
         // Pause
         if (Input.isDown('escape')) {
@@ -652,10 +712,25 @@ class Game {
 
         // Phone
         if (Input.isDown('tab')) {
+            if (Input.isDown('shift')) {
+                Input.keys['tab'] = false;
+                this.menu.devMissionOpen = !this.menu.devMissionOpen;
+                this.menu.phoneOpen = false;
+                this.mapOpen = false;
+                this.infoOpen = false;
+            } else {
             Input.keys['tab'] = false;
             this.menu.phoneOpen = !this.menu.phoneOpen;
+            this.menu.devMissionOpen = false;
+            this.mapOpen = false;
+            this.infoOpen = false;
+            }
         }
         if (this.menu.phoneOpen) return; // Freeze game when phone open
+        if (this.menu.devMissionOpen) {
+            this.updateDevMissionPicker();
+            return;
+        }
 
         // Full map toggle
         if (Input.isDown('m') && !this.menu.phoneOpen) {
@@ -763,7 +838,9 @@ class Game {
         this.missions.update(dt, this.player, this.audio, this.vehicles, this.images, this.world);
 
         // Vehicle ran over Darnell
-        if (this.player.inVehicle && this.missions.darnell && this.missions.darnell.alive) {
+        if (this.player.inVehicle &&
+            !this.isHelicopterVehicle(this.player.inVehicle) &&
+            this.missions.darnell && this.missions.darnell.alive) {
             const canRunOverDarnell = this.missions.darnell.state !== 'walking_to_car' &&
                 this.missions.darnell.state !== 'walking_to_office';
             if (canRunOverDarnell &&
@@ -773,11 +850,21 @@ class Game {
                 this.particles.blood(this.missions.darnell.x, this.missions.darnell.y);
             }
         }
-        if (this.player.inVehicle && this.missions.jj && this.missions.jj.alive &&
+        if (this.player.inVehicle &&
+            !this.isHelicopterVehicle(this.player.inVehicle) &&
+            this.missions.jj && this.missions.jj.alive &&
             Math.abs(this.player.inVehicle.speed) > 40 &&
             Collision.dist(this.player.x, this.player.y, this.missions.jj.x, this.missions.jj.y) < 32) {
             this.missions.jj.alive = false;
             this.particles.blood(this.missions.jj.x, this.missions.jj.y);
+        }
+        if (this.player.inVehicle &&
+            !this.isHelicopterVehicle(this.player.inVehicle) &&
+            this.missions.larry && this.missions.larry.alive &&
+            Math.abs(this.player.inVehicle.speed) > 40 &&
+            Collision.dist(this.player.x, this.player.y, this.missions.larry.x, this.missions.larry.y) < 32) {
+            this.missions.larry.alive = false;
+            this.particles.blood(this.missions.larry.x, this.missions.larry.y);
         }
 
         // Update particles
@@ -870,6 +957,18 @@ class Game {
                     if (Collision.aabb(b, { x: j.x - 9, y: j.y - 9, w: 18, h: 18 })) {
                         j.alive = false;
                         this.particles.blood(j.x, j.y);
+                        b.active = false;
+                        hitAny = true;
+                    }
+                }
+                if (hitAny) continue;
+
+                // Hit Larry (mission NPC)
+                if (this.missions.larry && this.missions.larry.alive && b.active) {
+                    const l = this.missions.larry;
+                    if (Collision.aabb(b, { x: l.x - 9, y: l.y - 9, w: 18, h: 18 })) {
+                        l.alive = false;
+                        this.particles.blood(l.x, l.y);
                         b.active = false;
                         hitAny = true;
                     }
@@ -1020,7 +1119,7 @@ class Game {
         this.camera.follow(this.player, dt);
 
         // Wanted level from traffic accidents — ONLY if police nearby
-        if (this.player.inVehicle && this.player.inVehicle.type !== 'helicopter' && this.player.inVehicle.type !== 'helicopter_police') {
+        if (this.player.inVehicle && !this.isHelicopterVehicle(this.player.inVehicle)) {
             // Check if any police car is within 500px
             const allPoliceVehicles = [
                 ...this.police.patrolUnits.map(u => u.vehicle),
@@ -1201,6 +1300,10 @@ class Game {
         // Phone overlay
         if (this.menu.phoneOpen) {
             this.menu.drawPhone(ctx, this.canvas, this.missions);
+        }
+
+        if (this.menu.devMissionOpen) {
+            this.menu.drawDevMissionPicker(ctx, this.canvas, this.missions);
         }
 
         // Full map overlay (drawn last so it appears on top of everything)
@@ -1472,11 +1575,19 @@ class Game {
     }
 
     updatePaySpray(dt) {
+        if (!this.isPaySprayUnlocked()) {
+            this.sprayOpen = false;
+            return;
+        }
         this.sprayCooldown = Math.max(0, this.sprayCooldown - dt);
+        const sprayTx = Math.floor(this.player.x / TILE);
+        const sprayTy = Math.floor(this.player.y / TILE);
         const near = this.player.inVehicle &&
             this.player.inVehicle.type !== 'helicopter' &&
             this.player.inVehicle.type !== 'helicopter_police' &&
-            Collision.dist(this.player.x, this.player.y, PAY_SPRAY_PX.x, PAY_SPRAY_PX.y) < 200;
+            sprayTy === 63 &&
+            sprayTx >= 15 &&
+            sprayTx <= 17;
 
         if (near && this.sprayCooldown <= 0) {
             this.sprayOpen = true;
@@ -1499,12 +1610,19 @@ class Game {
                                 v.img = this.images[sc.sedanImg];
                                 v.imgKey = sc.sedanImg;
                                 v.customColor = null;
+                            } else if (v.type === 'box_truck' && sc.truckImg && this.images[sc.truckImg]) {
+                                v.img = this.images[sc.truckImg];
+                                v.imgKey = sc.truckImg;
+                                v.customColor = null;
                             } else {
                                 v.customColor = sc.hex;
                             }
-                            v.health = 200;
-                            this.player.wantedLevel = 0;
-                            this.hud.notify(`Repainted ${sc.name} & repaired — $${cost}  ★ Cleared!`);
+                        v.health = 200;
+                        this.player.wantedLevel = 0;
+                        if (this.missions && this.missions.onVehicleRepaint) {
+                            this.missions.onVehicleRepaint(v, sc);
+                        }
+                        this.hud.notify(`Repainted ${sc.name} & repaired — $${cost}  ★ Cleared!`);
                             this.audio.playPickup();
                             this.sprayOpen = false;
                             this.sprayCooldown = 10.0;
@@ -1767,27 +1885,29 @@ class Game {
         ctx.restore();
 
         // ---- Pay & Spray ----
-        const px = PAY_SPRAY_PX.x;
-        const py = PAY_SPRAY_PX.y;
-        const psPulse = Math.sin(Date.now() / 400) * 0.2 + 0.8;
-        ctx.save();
-        ctx.fillStyle = `rgba(255, 100, 0, ${0.3 * psPulse})`;
-        ctx.fillRect(px - 64, py - 32, 128, 64);
-        ctx.strokeStyle = `rgba(255, 140, 0, ${psPulse})`;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(px - 64, py - 32, 128, 64);
-        ctx.fillStyle = '#ff6600';
-        ctx.font = 'bold 13px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.shadowColor = '#000';
-        ctx.shadowBlur = 4;
-        ctx.fillText('PAY & SPRAY', px, py - 8);
-        ctx.fillStyle = '#ffaa44';
-        ctx.font = '10px Arial';
-        ctx.fillText('Drive in with a car', px, py + 8);
-        ctx.textBaseline = 'alphabetic';
-        ctx.restore();
+        if (this.isPaySprayUnlocked()) {
+            const px = PAY_SPRAY_PX.x;
+            const py = PAY_SPRAY_PX.y;
+            const psPulse = Math.sin(Date.now() / 400) * 0.2 + 0.8;
+            ctx.save();
+            ctx.fillStyle = `rgba(255, 100, 0, ${0.3 * psPulse})`;
+            ctx.fillRect(px - 64, py - 32, 128, 64);
+            ctx.strokeStyle = `rgba(255, 140, 0, ${psPulse})`;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(px - 64, py - 32, 128, 64);
+            ctx.fillStyle = '#ff6600';
+            ctx.font = 'bold 13px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = '#000';
+            ctx.shadowBlur = 4;
+            ctx.fillText('PAY & SPRAY', px, py - 8);
+            ctx.fillStyle = '#ffaa44';
+            ctx.font = '10px Arial';
+            ctx.fillText('Drive in with a car', px, py + 8);
+            ctx.textBaseline = 'alphabetic';
+            ctx.restore();
+        }
 
         // ---- Safe House ----
         const shx = SAFE_HOUSE_MARKER_PX.x;
@@ -2104,11 +2224,13 @@ class Game {
         ctx.fillText('P', spx, spy);
 
         // Pay & Spray blip
-        const psx = offX + PAY_SPRAY_PX.x * scale, psy = offY + PAY_SPRAY_PX.y * scale;
-        ctx.fillStyle = '#ff6600';
-        ctx.beginPath(); ctx.arc(psx, psy, 5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 6px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('S', psx, psy);
+        if (this.isPaySprayUnlocked()) {
+            const psx = offX + PAY_SPRAY_PX.x * scale, psy = offY + PAY_SPRAY_PX.y * scale;
+            ctx.fillStyle = '#ff6600';
+            ctx.beginPath(); ctx.arc(psx, psy, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 6px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('S', psx, psy);
+        }
 
         // Safe House blip
         const shx = offX + SAFE_HOUSE_PX.x * scale, shy = offY + SAFE_HOUSE_PX.y * scale;

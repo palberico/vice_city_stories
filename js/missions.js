@@ -42,13 +42,21 @@ const MISSION_DATA = [
     {
         id: 'the_pickup',
         name: 'The Pickup',
-        description: 'Collect a package from the NE docks and deliver it downtown.',
-        reward: 1000,
-        startTile: { x: 60, y: 10 },   // NE
+        description: 'Meet Darnell, swipe a box truck, grab JJ\'s packages, repaint it, and make the drops.',
+        reward: 0,
+        startTile: { x: 71, y: 39 },
         available: false,
         steps: [
-            { type: 'go_to', text: 'Go to the NE pickup point', targetTile: { x: 72, y: 10 }, radius: 80 },
-            { type: 'go_to', text: 'Deliver the package downtown', targetTile: { x: 46, y: 22 }, radius: 80 }
+            { type: 'pickup_intro', text: 'Get out and talk to Darnell' },
+            { type: 'pickup_enter_truck', text: 'Steal the green box truck', targetTile: { x: 76, y: 33 }, radius: 110 },
+            { type: 'pickup_drive_to_jj', text: 'Take the box truck to JJ at the fish market', targetPos: { x: 9.5 * TILE, y: 66.5 * TILE }, radius: 130 },
+            { type: 'pickup_talk_jj', text: 'Get out and talk to JJ' },
+            { type: 'pickup_close_jj_chat', text: 'Talk to JJ' },
+            { type: 'pickup_repaint_truck', text: 'Repaint the truck at Pay \'n\' Spray', targetPos: PAY_SPRAY_PX, radius: 150 },
+            { type: 'pickup_dropoff', text: 'Deliver a package to Ammu-Nation NorthWest (3 left)', targetTile: { x: 14, y: 16 }, radius: 90, dropIndex: 0 },
+            { type: 'pickup_dropoff', text: 'Deliver a package to Ammu-Nation SouthWest (2 left)', targetTile: { x: 45, y: 63 }, radius: 90, dropIndex: 1 },
+            { type: 'pickup_return_to_larry', text: 'Take the last package back to Larry', targetTile: { x: 71, y: 39 }, radius: 100 },
+            { type: 'pickup_talk_larry', text: 'Get out and talk to Larry' }
         ]
     },
     {
@@ -215,12 +223,16 @@ class MissionSystem {
         this.armoredCarHits = 0;
         this.darnell = null;
         this.jj = null;
+        this.larry = null;
         this.chatBox = null;
         this.chatContext = null;
         this.chatCloseDelay = 0;
         this.guards = [];
         this.rpgPickup = null;
         this.highJinx = null;
+        this.pickupTruck = null;
+        this.pickupJob = null;
+        this.departingNPCs = [];
         this.displayTimer = null;
         this.onStateChange = options.onStateChange || null;
         this.onMissionComplete = options.onMissionComplete || null;
@@ -337,6 +349,27 @@ class MissionSystem {
         helicopter.liftScale = 0;
 
         return helicopter;
+    }
+
+    spawnPickupTruck(vehicles, images) {
+        this.removePickupTruck(vehicles);
+        const truck = new Vehicle(76.5 * TILE, 33.5 * TILE, 'box_truck', images);
+        truck.img = images['truck_box_green'] || truck.img;
+        truck.imgKey = 'truck_box_green';
+        truck.ai.active = false;
+        truck.speed = 0;
+        truck.angle = Math.PI / 2;
+        truck.isPickupTruck = true;
+        this.pickupTruck = truck;
+        vehicles.push(truck);
+        return truck;
+    }
+
+    removePickupTruck(vehicles) {
+        if (!this.pickupTruck) return;
+        const idx = vehicles.indexOf(this.pickupTruck);
+        if (idx !== -1) vehicles.splice(idx, 1);
+        this.pickupTruck = null;
     }
 
     removeRepoVehicle(vehicles) {
@@ -456,6 +489,25 @@ class MissionSystem {
         this.darnell.targetY = targetY;
     }
 
+    _updateWalkingNpc(npc, dt) {
+        if (!npc || !npc.alive) return;
+        if (npc.exitPause > 0) {
+            npc.exitPause -= dt;
+            return;
+        }
+        const dx = npc.targetX - npc.x;
+        const dy = npc.targetY - npc.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const speed = npc.walkSpeed || 90;
+        if (dist > 10) {
+            npc.x += (dx / dist) * speed * dt;
+            npc.y += (dy / dist) * speed * dt;
+            npc.angle = Math.atan2(dy, dx);
+        } else {
+            npc.alive = false;
+        }
+    }
+
     handleChatClosed() {
         const context = this.chatContext;
         this.chatContext = null;
@@ -494,6 +546,63 @@ class MissionSystem {
                 this.showMessage('MISSION COMPLETE: High Jinx! +$500');
             }
         }
+
+        if (this.activeMission.id === 'the_pickup') {
+            if (context === 'pickup_intro') {
+                this.currentStep = 1;
+                this.showMessage(this.activeMission.steps[this.currentStep].text);
+                return;
+            }
+            if (context === 'pickup_jj') {
+                if (this.pickupJob) {
+                    this.pickupJob.jjBriefed = true;
+                    this.pickupJob.packagesRemaining = 3;
+                }
+                return;
+            }
+            if (context === 'pickup_larry') {
+                if (this.pickupJob) {
+                    this.pickupJob.keepWalkersAfterMission = true;
+                }
+                if (this.darnell && this.darnell.alive) {
+                    this.departingNPCs.push({
+                        x: this.darnell.x,
+                        y: this.darnell.y,
+                        angle: 0,
+                        alive: true,
+                        targetX: 74.5 * TILE,
+                        targetY: 42.5 * TILE,
+                        walkSpeed: 92,
+                        sprite: 'npc_casual_front',
+                        name: 'DARNELL',
+                        color: '#ff8800'
+                    });
+                }
+                if (this.larry && this.larry.alive) {
+                    this.departingNPCs.push({
+                        x: this.larry.x,
+                        y: this.larry.y,
+                        angle: 0,
+                        alive: true,
+                        targetX: 75.5 * TILE,
+                        targetY: 42.5 * TILE,
+                        walkSpeed: 88,
+                        sprite: 'npc_business_man_front',
+                        name: 'LARRY',
+                        color: '#22ddee'
+                    });
+                }
+                this.currentStep = this.activeMission.steps.length;
+                return;
+            }
+        }
+    }
+
+    onVehicleRepaint(vehicle, colorChoice) {
+        if (!this.activeMission || this.activeMission.id !== 'the_pickup') return;
+        if (!this.pickupTruck || vehicle !== this.pickupTruck || !this.pickupJob) return;
+        this.pickupJob.repainted = true;
+        this.pickupJob.repaintColor = colorChoice ? colorChoice.name : 'Custom';
     }
 
     _updateDarnell(dt, player) {
@@ -554,6 +663,8 @@ class MissionSystem {
         this.displayTimer = null;
         this.chatCloseDelay = Math.max(0, this.chatCloseDelay - dt);
         this._updateDarnell(dt, player);
+        this.departingNPCs = this.departingNPCs.filter(npc => npc && npc.alive);
+        for (const npc of this.departingNPCs) this._updateWalkingNpc(npc, dt);
 
         if (!this.activeMission) {
             for (const marker of this.missionMarkers) {
@@ -578,6 +689,24 @@ class MissionSystem {
         if (this.activeMission.id === 'repo_job' && this.repoVehicle && this.repoVehicle.health <= 0) {
             this.failMission('The car was destroyed!', audio, vehicles);
             return;
+        }
+        if (this.activeMission.id === 'the_pickup') {
+            if (this.darnell && !this.darnell.alive) {
+                this.failMission('Darnell was killed!', audio, vehicles);
+                return;
+            }
+            if (this.jj && !this.jj.alive) {
+                this.failMission('JJ was killed!', audio, vehicles);
+                return;
+            }
+            if (this.larry && !this.larry.alive) {
+                this.failMission('Larry was killed!', audio, vehicles);
+                return;
+            }
+            if (this.pickupTruck && this.pickupTruck.health <= 0) {
+                this.failMission('The box truck was destroyed!', audio, vehicles);
+                return;
+            }
         }
         if (this.activeMission.id === 'high_jinx') {
             if (this.darnell && !this.darnell.alive) {
@@ -795,6 +924,103 @@ class MissionSystem {
             case 'lose_wanted':
                 if (player.wantedLevel === 0) completed = true;
                 break;
+            case 'pickup_intro':
+                if (!player.inVehicle && this.darnell && this.darnell.alive &&
+                    Collision.dist(player.x, player.y, this.darnell.x, this.darnell.y) < 96 &&
+                    (!this.chatBox || !this.chatBox.active)) {
+                    this.openChat('Darnell', [
+                        'I need you to jack a box truck and head down to JJ at the fish market.',
+                        'He has a package waiting, but keep it quiet and keep your hands clean.',
+                        'Get moving. The green truck is parked nearby.'
+                    ], 'pickup_intro');
+                }
+                break;
+            case 'pickup_enter_truck':
+                if (player.inVehicle && player.inVehicle === this.pickupTruck) completed = true;
+                break;
+            case 'pickup_drive_to_jj':
+                if (player.inVehicle === this.pickupTruck && this.jj &&
+                    Collision.dist(player.x, player.y, this.jj.x, this.jj.y) < 130 &&
+                    Math.abs(player.inVehicle.speed) < 35) {
+                    completed = true;
+                }
+                break;
+            case 'pickup_talk_jj':
+                if (!player.inVehicle && this.jj && this.jj.alive &&
+                    Collision.dist(player.x, player.y, this.jj.x, this.jj.y) < 96 &&
+                    this.pickupTruck &&
+                    Collision.dist(this.pickupTruck.x, this.pickupTruck.y, this.jj.x, this.jj.y) < 220 &&
+                    (!this.chatBox || !this.chatBox.active)) {
+                    this.openChat('JJ', [
+                        'Fish market imports more than fresh snapper, if you catch my drift.',
+                        'Here are three packages. Drop them at the stores, but repaint that truck first.',
+                        'Do not roll up hot. Lose the cops before every drop.'
+                    ], 'pickup_jj');
+                    completed = true;
+                }
+                break;
+            case 'pickup_close_jj_chat':
+                if (this.pickupJob && this.pickupJob.jjBriefed && (!this.chatBox || !this.chatBox.active)) {
+                    completed = true;
+                }
+                break;
+            case 'pickup_repaint_truck':
+                if (this.pickupJob && this.pickupJob.repainted &&
+                    player.inVehicle === this.pickupTruck) {
+                    completed = true;
+                }
+                break;
+            case 'pickup_dropoff':
+                if (player.inVehicle === this.pickupTruck && step.targetTile) {
+                    const tx = step.targetTile.x * TILE;
+                    const ty = step.targetTile.y * TILE;
+                    if (Collision.dist(player.x, player.y, tx, ty) < step.radius &&
+                        Math.abs(player.inVehicle.speed) < 30) {
+                        if (player.wantedLevel > 0) {
+                            this.showMessage('Lose the cops before making the drop.');
+                        } else {
+                            if (this.pickupJob) this.pickupJob.packagesRemaining = Math.max(0, this.pickupJob.packagesRemaining - 1);
+                            completed = true;
+                        }
+                    }
+                }
+                break;
+            case 'pickup_return_to_larry':
+                if (player.inVehicle === this.pickupTruck && step.targetTile) {
+                    const tx = step.targetTile.x * TILE;
+                    const ty = step.targetTile.y * TILE;
+                    if (Collision.dist(player.x, player.y, tx, ty) < step.radius &&
+                        Math.abs(player.inVehicle.speed) < 30) {
+                        if (player.wantedLevel > 0) {
+                            this.showMessage('Lose the cops before the final handoff.');
+                        } else {
+                            if (this.pickupJob) this.pickupJob.packagesRemaining = 0;
+                            if (!this.larry) {
+                                this.larry = {
+                                    x: 72.3 * TILE,
+                                    y: 40.2 * TILE,
+                                    alive: true,
+                                    angle: Math.PI,
+                                    name: 'LARRY',
+                                    sprite: 'npc_business_man_front'
+                                };
+                            }
+                            completed = true;
+                        }
+                    }
+                }
+                break;
+            case 'pickup_talk_larry':
+                if (!player.inVehicle && this.larry && this.larry.alive &&
+                    Collision.dist(player.x, player.y, this.larry.x, this.larry.y) < 96 &&
+                    (!this.chatBox || !this.chatBox.active)) {
+                    this.openChat('Larry', [
+                        'Nice work. Those goods made it in one piece.',
+                        'I cannot pay cash right now, but take this pistol and a hundred rounds for your trouble.',
+                        'You ever need more, Ammu-Nation is open for business now.'
+                    ], 'pickup_larry');
+                }
+                break;
             case 'high_jinx_intro':
                 if (!player.inVehicle && this.darnell && this.darnell.alive &&
                     Collision.dist(player.x, player.y, this.darnell.x, this.darnell.y) < 96 &&
@@ -929,11 +1155,38 @@ class MissionSystem {
         this.firstRideAttorneyDropDone = false;
         this.darnell = null;
         this.jj = null;
+        this.larry = null;
         this.chatBox = null;
         this.chatContext = null;
         this.highJinx = null;
+        this.pickupTruck = null;
+        this.pickupJob = null;
         this.showMessage(`MISSION: ${this.activeMission.name} — ${this.activeMission.description}`);
         audio.playPickup();
+        if (this.activeMission.id === 'the_pickup') {
+            this.darnell = {
+                x: 71.5 * TILE,
+                y: 40.5 * TILE,
+                alive: true,
+                angle: Math.PI,
+                state: 'idle'
+            };
+            this.jj = {
+                x: 9.5 * TILE,
+                y: 66.5 * TILE,
+                alive: true,
+                angle: 0,
+                name: 'JJ',
+                sprite: 'npc_beach_tourist_front'
+            };
+            this.pickupTruck = this.spawnPickupTruck(vehicles, images);
+            this.pickupJob = {
+                jjBriefed: false,
+                repainted: false,
+                packagesRemaining: 0,
+                keepWalkersAfterMission: false
+            };
+        }
         if (this.activeMission.id === 'high_jinx') {
             this.darnell = {
                 x: 35.5 * TILE,
@@ -972,6 +1225,29 @@ class MissionSystem {
         }
     }
 
+    debugStartMission(index, audio, vehicles, images) {
+        if (index < 0 || index >= this.missions.length) return false;
+
+        if (this.activeMission) {
+            if (this.activeMission.id === 'first_ride') this._cleanupFirstRide();
+            if (this.activeMission.id === 'the_pickup') this._cleanupThePickup(vehicles);
+            if (this.activeMission.id === 'high_jinx') this._cleanupHighJinx();
+            if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
+            if (this.activeMission.id === 'the_armored_job') this._cleanupArmoredJob(vehicles);
+            this.activeMission = null;
+            this.currentStep = 0;
+            this.timerActive = false;
+            this.missionTimer = 0;
+            this.displayTimer = null;
+        }
+
+        this.missions[index].available = true;
+        this.startMission(index, audio, vehicles, images);
+        this.setupMarkers();
+        if (this.onStateChange) this.onStateChange(this.getMissionState());
+        return true;
+    }
+
     _cleanupArmoredJob(vehicles) {
         this.removeArmoredCar(vehicles);
         this.darnell = null;
@@ -1000,12 +1276,28 @@ class MissionSystem {
         this.displayTimer = null;
     }
 
+    _cleanupThePickup(vehicles) {
+        this.darnell = null;
+        this.jj = null;
+        this.larry = null;
+        this.chatBox = null;
+        this.chatContext = null;
+        this.removePickupTruck(vehicles);
+        this.pickupJob = null;
+        this.displayTimer = null;
+    }
+
     completeMission(player, audio, vehicles) {
         const completedMission = this.activeMission;
         player.money += this.activeMission.reward;
         this.showMessage(`MISSION COMPLETE: ${this.activeMission.name}! +$${this.activeMission.reward}`);
 
         if (this.activeMission.id === 'first_ride') this._cleanupFirstRide();
+        if (this.activeMission.id === 'the_pickup') {
+            player.weapons.pickupWeapon('pistol', 100);
+            this.showMessage('MISSION COMPLETE: The Pickup! Larry hooked you up with a pistol and 100 rounds.');
+            this._cleanupThePickup(vehicles);
+        }
         if (this.activeMission.id === 'high_jinx') this._cleanupHighJinx();
         if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
         if (this.activeMission.id === 'the_armored_job') this._cleanupArmoredJob(vehicles);
@@ -1028,6 +1320,7 @@ class MissionSystem {
         const name = this.activeMission.name;
         this.showMessage(`MISSION FAILED: ${name} — ${reason}`);
         if (this.activeMission.id === 'first_ride') this._cleanupFirstRide();
+        if (this.activeMission.id === 'the_pickup') this._cleanupThePickup(vehicles);
         if (this.activeMission.id === 'high_jinx') this._cleanupHighJinx();
         if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
         if (this.activeMission.id === 'the_armored_job') this._cleanupArmoredJob(vehicles);
@@ -1059,6 +1352,21 @@ class MissionSystem {
         }
         if (step.type === 'find_darnell' && this.darnell && this.darnell.alive) {
             return { x: this.darnell.x, y: this.darnell.y };
+        }
+        if (step.type === 'pickup_intro' && this.darnell && this.darnell.alive) {
+            return { x: this.darnell.x, y: this.darnell.y };
+        }
+        if (step.type === 'pickup_enter_truck' && this.pickupTruck) {
+            return { x: this.pickupTruck.x, y: this.pickupTruck.y };
+        }
+        if ((step.type === 'pickup_talk_jj' || step.type === 'pickup_close_jj_chat') && this.jj && this.jj.alive) {
+            return { x: this.jj.x, y: this.jj.y };
+        }
+        if (step.type === 'pickup_repaint_truck') {
+            return { x: PAY_SPRAY_PX.x, y: PAY_SPRAY_PX.y };
+        }
+        if (step.type === 'pickup_talk_larry' && this.larry && this.larry.alive) {
+            return { x: this.larry.x, y: this.larry.y };
         }
         if ((step.type === 'high_jinx_intro' || step.type === 'high_jinx_wait_for_gate') && this.darnell && this.darnell.alive) {
             return { x: this.darnell.x, y: this.darnell.y };
@@ -1094,6 +1402,31 @@ class MissionSystem {
     }
 
     drawMissionEntities(ctx, images, player) {
+        const drawNamedNpc = (npc, spriteKey, ringColor, name, labelW = 56) => {
+            if (!npc || !npc.alive) return;
+            const img = images[spriteKey];
+            ctx.save();
+            ctx.strokeStyle = ringColor;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(npc.x, npc.y, 16, 0, Math.PI * 2);
+            ctx.stroke();
+            if (img) {
+                ctx.drawImage(img, npc.x - 12, npc.y - 18, 24, 36);
+            } else {
+                ctx.fillStyle = ringColor;
+                ctx.fillRect(npc.x - 10, npc.y - 16, 20, 32);
+            }
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(npc.x - labelW / 2, npc.y - 34, labelW, 14);
+            ctx.fillStyle = ringColor;
+            ctx.font = 'bold 10px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText(name, npc.x, npc.y - 33);
+            ctx.restore();
+        };
+
         // Draw Darnell NPC
         if (this.darnell && this.darnell.alive && this.darnell.state !== 'in_car') {
             const d = this.darnell;
@@ -1123,28 +1456,15 @@ class MissionSystem {
         }
 
         if (this.jj && this.jj.alive) {
-            const j = this.jj;
-            const img = images[j.sprite] || images['npc_beach_tourist_front'];
-            ctx.save();
-            ctx.strokeStyle = 'rgba(0, 220, 255, 0.9)';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(j.x, j.y, 16, 0, Math.PI * 2);
-            ctx.stroke();
-            if (img) {
-                ctx.drawImage(img, j.x - 12, j.y - 18, 24, 36);
-            } else {
-                ctx.fillStyle = '#22ddee';
-                ctx.fillRect(j.x - 10, j.y - 16, 20, 32);
-            }
-            ctx.fillStyle = 'rgba(0,0,0,0.6)';
-            ctx.fillRect(j.x - 18, j.y - 34, 36, 14);
-            ctx.fillStyle = '#22ddee';
-            ctx.font = 'bold 10px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
-            ctx.fillText('JJ', j.x, j.y - 33);
-            ctx.restore();
+            drawNamedNpc(this.jj, this.jj.sprite || 'npc_beach_tourist_front', '#22ddee', 'JJ', 36);
+        }
+
+        if (this.larry && this.larry.alive) {
+            drawNamedNpc(this.larry, this.larry.sprite || 'npc_business_man_front', '#88ddff', 'LARRY', 44);
+        }
+
+        for (const npc of this.departingNPCs) {
+            drawNamedNpc(npc, npc.sprite || 'npc_casual_front', npc.color || '#ffffff', npc.name || 'NPC', 56);
         }
 
         // RPG pickup marker (drawn here so it appears above tile sprites)
@@ -1258,6 +1578,17 @@ class MissionSystem {
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.arc(this.jj.x, this.jj.y, 22 + pulse, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        if (this.larry && this.larry.alive) {
+            const pulse = Math.sin(Date.now() / 400) * 4;
+            ctx.save();
+            ctx.strokeStyle = '#88ddff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(this.larry.x, this.larry.y, 22 + pulse, 0, Math.PI * 2);
             ctx.stroke();
             ctx.restore();
         }
