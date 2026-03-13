@@ -13,7 +13,7 @@ class MenuSystem {
         this.logoImg = img;
     }
 
-    drawMainMenu(ctx, canvas) {
+    drawMainMenu(ctx, canvas, hasSaveData = false) {
         const W = canvas.width;
         const H = canvas.height;
 
@@ -63,15 +63,28 @@ class MenuSystem {
             ctx.fillText('STORIES', W / 2, H * 0.32);
         }
 
-        // Neon glow effect on "Press ENTER to Start"
+        // Main action prompt
         const pulse = Math.sin(Date.now() / 500) * 0.3 + 0.7;
         ctx.shadowColor = '#ff1493';
         ctx.shadowBlur = 20 * pulse;
         ctx.fillStyle = `rgba(255,255,255,${pulse})`;
         ctx.font = 'bold 24px "Segoe UI", Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('CLICK OR PRESS ENTER TO START', W / 2, H * 0.65);
+        ctx.fillText(
+            hasSaveData ? 'CLICK OR PRESS ENTER TO CONTINUE' : 'CLICK OR PRESS ENTER TO START',
+            W / 2,
+            H * 0.65
+        );
         ctx.shadowBlur = 0;
+
+        if (hasSaveData) {
+            ctx.fillStyle = 'rgba(255,255,255,0.78)';
+            ctx.font = 'bold 18px "Segoe UI", Arial';
+            ctx.fillText('PRESS N FOR NEW GAME', W / 2, H * 0.69);
+            ctx.fillStyle = 'rgba(255,255,255,0.42)';
+            ctx.font = '13px "Segoe UI", Arial';
+            ctx.fillText('Clears local save progress and driveway car', W / 2, H * 0.72);
+        }
 
         // Controls guide
         ctx.fillStyle = 'rgba(255,255,255,0.5)';
@@ -85,8 +98,9 @@ class MenuSystem {
             'H — Buy HP at Hospital ($25)        L — Lawyer: Drop ★ ($200)',
             'I — Controls Info                   ESC — Pause',
         ];
+        const controlsStartY = hasSaveData ? H * 0.76 : H * 0.73;
         controls.forEach((c, i) => {
-            ctx.fillText(c, W / 2, H * 0.73 + i * 22);
+            ctx.fillText(c, W / 2, controlsStartY + i * 22);
         });
 
         // Version

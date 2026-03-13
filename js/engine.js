@@ -13,6 +13,7 @@ class Game {
         this.showGrid = false;
         this.saveKey = 'gta6_save_v1';
         this.saveData = null;
+        this.menuStartHandlers = null;
 
         // Systems
         this.camera = null;
@@ -54,18 +55,25 @@ class Game {
                 // Direct event listeners for starting the game (bypasses Input system for reliability)
                 const startGame = (e) => {
                     if (this.state !== 'menu') return;
+                    if (e.type === 'keydown' && e.key !== 'Enter') return;
                     e.preventDefault();
-                    document.removeEventListener('click', startGame);
-                    document.removeEventListener('keydown', startGame);
-                    document.removeEventListener('touchstart', startGame);
-                    this.audio.init();
-                    this.initGame();
+                    this.detachMenuStartHandlers();
+                    this.startGameFromMenu(false);
+                };
+                const startNewGame = (e) => {
+                    if (this.state !== 'menu') return;
+                    if (e.type !== 'keydown' || String(e.key || '').toLowerCase() !== 'n') return;
+                    e.preventDefault();
+                    this.detachMenuStartHandlers();
+                    this.startGameFromMenu(true);
                 };
                 // Small delay to prevent starting from load-click
                 setTimeout(() => {
+                    this.menuStartHandlers = { startGame, startNewGame };
                     document.addEventListener('click', startGame);
                     document.addEventListener('keydown', startGame);
                     document.addEventListener('touchstart', startGame);
+                    document.addEventListener('keydown', startNewGame);
                 }, 600);
             })
             .catch(err => {
@@ -98,6 +106,36 @@ class Game {
         } catch (err) {
             console.warn('[GTA6] Failed to write save data:', err);
         }
+    }
+
+    clearSaveData() {
+        try {
+            localStorage.removeItem(this.saveKey);
+        } catch (err) {
+            console.warn('[GTA6] Failed to clear save data:', err);
+        }
+        this.saveData = {};
+    }
+
+    hasSaveData() {
+        const saveData = this.saveData || this.loadSaveData();
+        if (!saveData || typeof saveData !== 'object') return false;
+        return Object.keys(saveData).length > 0;
+    }
+
+    detachMenuStartHandlers() {
+        if (!this.menuStartHandlers) return;
+        document.removeEventListener('click', this.menuStartHandlers.startGame);
+        document.removeEventListener('keydown', this.menuStartHandlers.startGame);
+        document.removeEventListener('touchstart', this.menuStartHandlers.startGame);
+        document.removeEventListener('keydown', this.menuStartHandlers.startNewGame);
+        this.menuStartHandlers = null;
+    }
+
+    startGameFromMenu(clearSave = false) {
+        if (clearSave) this.clearSaveData();
+        this.audio.init();
+        this.initGame(clearSave);
     }
 
     persistMissionState(missionState) {
@@ -380,8 +418,8 @@ class Game {
         return result;
     }
 
-    initGame() {
-        this.saveData = this.loadSaveData();
+    initGame(forceFresh = false) {
+        this.saveData = forceFresh ? {} : this.loadSaveData();
         this.world = new World();
         this.camera = new Camera(this.canvas.width, this.canvas.height);
 
@@ -554,7 +592,7 @@ class Game {
         switch (this.state) {
             case 'menu':
                 this.updateMenu();
-                this.menu.drawMainMenu(this.ctx, this.canvas);
+                this.menu.drawMainMenu(this.ctx, this.canvas, this.hasSaveData());
                 break;
             case 'playing':
                 this.updateGame(dt);
@@ -572,7 +610,12 @@ class Game {
     }
 
     updateMenu() {
-        // Start is handled by direct event listeners in constructor
+        if (this.state !== 'menu') return;
+        if (Input.isDown('n')) {
+            Input.keys['n'] = false;
+            this.detachMenuStartHandlers();
+            this.startGameFromMenu(true);
+        }
     }
 
     updatePause() {
