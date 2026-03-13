@@ -18,6 +18,28 @@ const MISSION_DATA = [
         ]
     },
     {
+        id: 'high_jinx',
+        name: 'High Jinx',
+        description: 'Catch the police helipad gate while it is open, borrow the Maverick, grab JJ on the beach, and get it back before the cop returns.',
+        reward: 500,
+        startTile: { x: 34, y: 26 },
+        available: false,
+        steps: [
+            { type: 'high_jinx_intro', text: 'Talk to Darnell at the police station' },
+            { type: 'high_jinx_wait_for_gate', text: 'Wait for the helipad gate to open' },
+            { type: 'high_jinx_enter_heli', text: 'Hop in the police helicopter before the gate closes' },
+            { type: 'high_jinx_fly_to', text: 'Fly to the safe house', targetTile: { x: 18, y: 8 }, radius: 130 },
+            { type: 'high_jinx_fly_to', text: 'Fly to the northeast corner', targetTile: { x: 70, y: 10 }, radius: 150 },
+            { type: 'high_jinx_fly_to', text: 'Fly to the southeast corner', targetTile: { x: 70, y: 66 }, radius: 150 },
+            { type: 'high_jinx_meet_jj', text: 'Land near JJ on the southwest beach', targetTile: { x: 9, y: 66 }, radius: 110 },
+            { type: 'high_jinx_close_jj_chat', text: 'Talk to JJ' },
+            { type: 'high_jinx_reenter_heli', text: 'Get back in the helicopter' },
+            { type: 'high_jinx_return_heli', text: 'Get the helicopter back to the police helipad', targetPos: { x: 34.5 * TILE, y: 28.5 * TILE }, radius: 70 },
+            { type: 'high_jinx_exit_heli', text: 'Land on the helipad and get out before the gate closes', targetPos: { x: 34.5 * TILE, y: 28.5 * TILE }, radius: 70 },
+            { type: 'high_jinx_outro', text: 'Talk to Darnell' }
+        ]
+    },
+    {
         id: 'the_pickup',
         name: 'The Pickup',
         description: 'Collect a package from the NE docks and deliver it downtown.',
@@ -192,9 +214,14 @@ class MissionSystem {
         this.armoredCar = null;
         this.armoredCarHits = 0;
         this.darnell = null;
+        this.jj = null;
         this.chatBox = null;
+        this.chatContext = null;
+        this.chatCloseDelay = 0;
         this.guards = [];
         this.rpgPickup = null;
+        this.highJinx = null;
+        this.displayTimer = null;
         this.onStateChange = options.onStateChange || null;
         this.onMissionComplete = options.onMissionComplete || null;
         this.firstRideWaitShown = false;
@@ -254,6 +281,16 @@ class MissionSystem {
         }
     }
 
+    openChat(speaker, lines, context = null) {
+        this.chatBox = {
+            active: true,
+            speaker,
+            lines
+        };
+        this.chatContext = context;
+        this.chatCloseDelay = 0.25;
+    }
+
     spawnRepoVehicle(vehicles, images) {
         const mission = this.missions.find(m => m.id === 'repo_job');
         const step0 = mission && mission.steps[0];
@@ -266,6 +303,40 @@ class MissionSystem {
         repoCar.angle = Math.PI / 4;
         this.repoVehicle = repoCar;
         vehicles.push(repoCar);
+    }
+
+    ensureHighJinxHelicopter(vehicles, images) {
+        const heliX = 34 * TILE + TILE / 2;
+        const heliY = 28 * TILE + TILE / 2;
+        const candidates = vehicles.filter(v =>
+            v.type === 'helicopter_police' && (v.isHelipadParked || v.isHighJinxHelicopter)
+        );
+        const helicopter = candidates[0] || new Vehicle(heliX, heliY, 'helicopter_police', images);
+
+        if (!candidates[0]) vehicles.push(helicopter);
+        for (let i = 1; i < candidates.length; i++) {
+            const idx = vehicles.indexOf(candidates[i]);
+            if (idx !== -1) vehicles.splice(idx, 1);
+        }
+
+        if (helicopter.driver && helicopter.driver.exitVehicle) {
+            helicopter.driver.exitVehicle();
+        }
+
+        helicopter.x = heliX;
+        helicopter.y = heliY;
+        helicopter.angle = 0;
+        helicopter.speed = 0;
+        helicopter.health = 100;
+        helicopter.ai.active = false;
+        helicopter.driver = null;
+        helicopter.isHelipadParked = true;
+        helicopter.isHighJinxHelicopter = true;
+        helicopter.wasPlayerDriven = false;
+        helicopter.abandonedTimer = 0;
+        helicopter.liftScale = 0;
+
+        return helicopter;
     }
 
     removeRepoVehicle(vehicles) {
@@ -376,17 +447,52 @@ class MissionSystem {
         this.darnell.targetY = targetY;
     }
 
+    _sendDarnellWalking(targetX, targetY) {
+        if (!this.darnell) return;
+        this.darnell.state = 'walking_to_office';
+        this.darnell.vehicle = null;
+        this.darnell.exitPause = 0;
+        this.darnell.targetX = targetX;
+        this.darnell.targetY = targetY;
+    }
+
     handleChatClosed() {
+        const context = this.chatContext;
+        this.chatContext = null;
         if (!this.activeMission) return;
         const step = this.activeMission.steps[this.currentStep];
         if (!step) return;
-        if (this.activeMission.id === 'first_ride' &&
-            step.type === 'drive_darnell_to_attorney' &&
+        if ((context === 'first_ride_attorney' ||
+                (this.activeMission.id === 'first_ride' && step.type === 'drive_darnell_to_attorney')) &&
             this.firstRideAttorneyChatShown &&
             this.darnell &&
             this.darnell.state === 'in_car') {
             this._releaseDarnellFromCar(ATTORNEY_OFFICE_PX.x, ATTORNEY_OFFICE_PX.y);
             this.firstRideAttorneyDropDone = true;
+            return;
+        }
+
+        if (this.activeMission.id === 'high_jinx') {
+            if (context === 'high_jinx_gate_closed') {
+                this.currentStep = 1;
+                this.showMessage('The gate is shut. Watch the clock and come back when it opens.');
+                return;
+            }
+            if (context === 'high_jinx_gate_open') {
+                this.currentStep = 2;
+                this.showMessage(this.activeMission.steps[this.currentStep].text);
+                return;
+            }
+            if (context === 'high_jinx_jj') {
+                if (this.highJinx) this.highJinx.packagePickedUp = true;
+                return;
+            }
+            if (context === 'high_jinx_outro') {
+                if (this.highJinx) this.highJinx.keepDarnellAfterMission = true;
+                this._sendDarnellWalking(38.5 * TILE, 26.5 * TILE);
+                this.currentStep = this.activeMission.steps.length;
+                this.showMessage('MISSION COMPLETE: High Jinx! +$500');
+            }
         }
     }
 
@@ -443,8 +549,11 @@ class MissionSystem {
 
     }
 
-    update(dt, player, audio, vehicles, images) {
+    update(dt, player, audio, vehicles, images, world) {
         this.messageTimer = Math.max(0, this.messageTimer - dt);
+        this.displayTimer = null;
+        this.chatCloseDelay = Math.max(0, this.chatCloseDelay - dt);
+        this._updateDarnell(dt, player);
 
         if (!this.activeMission) {
             for (const marker of this.missionMarkers) {
@@ -455,8 +564,6 @@ class MissionSystem {
             }
             return;
         }
-
-        this._updateDarnell(dt, player);
 
         // ── Failure conditions ──
         if (!player.alive) {
@@ -471,6 +578,30 @@ class MissionSystem {
         if (this.activeMission.id === 'repo_job' && this.repoVehicle && this.repoVehicle.health <= 0) {
             this.failMission('The car was destroyed!', audio, vehicles);
             return;
+        }
+        if (this.activeMission.id === 'high_jinx') {
+            if (this.darnell && !this.darnell.alive) {
+                this.failMission('Darnell was killed!', audio, vehicles);
+                return;
+            }
+            if (this.jj && !this.jj.alive) {
+                this.failMission('JJ was killed!', audio, vehicles);
+                return;
+            }
+            if (this.highJinx && this.highJinx.helicopter && this.highJinx.helicopter.health <= 0) {
+                this.failMission('The helicopter was destroyed!', audio, vehicles);
+                return;
+            }
+            if (this.currentStep === 1 && world) {
+                this.displayTimer = world.getHelipadTimeRemaining();
+            }
+            if (this.currentStep >= 2 && this.currentStep <= 10 && world) {
+                this.displayTimer = world.getHelipadTimeRemaining();
+                if (!world.helipadOpen) {
+                    this.failMission('The cop came back and the helipad gate slammed shut!', audio, vehicles);
+                    return;
+                }
+            }
         }
         if (this.activeMission.id === 'the_armored_job') {
             // Darnell killed during intro steps
@@ -559,14 +690,11 @@ class MissionSystem {
                     const dd = Collision.dist(player.x, player.y, this.darnell.x, this.darnell.y);
                     if (dd < 96) {
                         // Open chatbox
-                        this.chatBox = {
-                            active: true,
-                            lines: [
-                                'An armored truck is delivering some loot to the bank, should be an easy take.',
-                                'I left something for you near the dumpster east of my attorney\'s office that will help.',
-                                'Get a car and get moving.'
-                            ]
-                        };
+                        this.openChat('Darnell', [
+                            'An armored truck is delivering some loot to the bank, should be an easy take.',
+                            'I left something for you near the dumpster east of my attorney\'s office that will help.',
+                            'Get a car and get moving.'
+                        ]);
                         completed = true;
                     }
                 }
@@ -613,14 +741,11 @@ class MissionSystem {
                     Math.abs(player.inVehicle.speed) < 20) {
                     if (!this.firstRideAttorneyChatShown) {
                         this.firstRideAttorneyChatShown = true;
-                        this.chatBox = {
-                            active: true,
-                            lines: [
-                                'Thanks for the ride. My attorney is inside.',
-                                'There are a couple of cars in the lot if you want something different.',
-                                'Meet me back at the safe house when you are ready.'
-                            ]
-                        };
+                        this.openChat('Darnell', [
+                            'Thanks for the ride. My attorney is inside.',
+                            'There are a couple of cars in the lot if you want something different.',
+                            'Meet me back at the safe house when you are ready.'
+                        ], 'first_ride_attorney');
                     }
                 }
                 if (this.firstRideAttorneyDropDone) {
@@ -670,6 +795,112 @@ class MissionSystem {
             case 'lose_wanted':
                 if (player.wantedLevel === 0) completed = true;
                 break;
+            case 'high_jinx_intro':
+                if (!player.inVehicle && this.darnell && this.darnell.alive &&
+                    Collision.dist(player.x, player.y, this.darnell.x, this.darnell.y) < 96 &&
+                    (!this.chatBox || !this.chatBox.active)) {
+                    if (world && world.helipadOpen) {
+                        this.openChat('Darnell', [
+                            'That dumb cop left the gate open again. Move now.',
+                            'Hop in the Maverick, hit the safe house, then sweep the northeast and southeast corners.',
+                            'JJ is waiting on the southwest beach with the package. Get the heli back before the gate shuts.'
+                        ], 'high_jinx_gate_open');
+                    } else {
+                        this.openChat('Darnell', [
+                            'That fool still has the gate locked up.',
+                            'Come back in a few and keep an eye on the clock.',
+                            'Soon as it opens, we are taking that helicopter for a joy ride.'
+                        ], 'high_jinx_gate_closed');
+                    }
+                }
+                break;
+            case 'high_jinx_wait_for_gate':
+                if (world && world.helipadOpen && !player.inVehicle && this.darnell && this.darnell.alive &&
+                    Collision.dist(player.x, player.y, this.darnell.x, this.darnell.y) < 96 &&
+                    (!this.chatBox || !this.chatBox.active)) {
+                    this.openChat('Darnell', [
+                        'There it is. Gate is open.',
+                        'Get in the Maverick, swing by the safe house, then work the northeast and southeast corners.',
+                        'Pick up JJ on the southwest beach and bring the bird back before the cop gets home.'
+                    ], 'high_jinx_gate_open');
+                }
+                break;
+            case 'high_jinx_enter_heli':
+                if (this.highJinx && player.inVehicle === this.highJinx.helicopter) completed = true;
+                break;
+            case 'high_jinx_fly_to':
+                if (this.highJinx && player.inVehicle === this.highJinx.helicopter && step.targetTile) {
+                    const tx = step.targetTile.x * TILE, ty = step.targetTile.y * TILE;
+                    if (Collision.dist(player.x, player.y, tx, ty) < step.radius) completed = true;
+                }
+                break;
+            case 'high_jinx_meet_jj':
+                if (this.highJinx && this.jj && this.jj.alive && !player.inVehicle) {
+                    const nearJJ = Collision.dist(player.x, player.y, this.jj.x, this.jj.y) < 96;
+                    const heliNearby = !this.highJinx.helicopter ||
+                        Collision.dist(this.highJinx.helicopter.x, this.highJinx.helicopter.y, this.jj.x, this.jj.y) < 260;
+                    if (nearJJ && heliNearby && (!this.chatBox || !this.chatBox.active)) {
+                        this.openChat('JJ', [
+                            'Package is here. Nice bird.',
+                            'Darnell says quit sight-seeing and get that helicopter back to the station.',
+                            'I am out of here.'
+                        ], 'high_jinx_jj');
+                        completed = true;
+                    }
+                }
+                break;
+            case 'high_jinx_close_jj_chat':
+                if (this.highJinx && this.jj && this.jj.alive && !this.highJinx.packagePickedUp &&
+                    !player.inVehicle &&
+                    Collision.dist(player.x, player.y, this.jj.x, this.jj.y) < 96 &&
+                    (!this.chatBox || !this.chatBox.active)) {
+                    this.openChat('JJ', [
+                        'Package is here. Nice bird.',
+                        'Darnell says quit sight-seeing and get that helicopter back to the station.',
+                        'I am out of here.'
+                    ], 'high_jinx_jj');
+                }
+                if (this.highJinx && this.highJinx.packagePickedUp && (!this.chatBox || !this.chatBox.active)) {
+                    completed = true;
+                }
+                break;
+            case 'high_jinx_reenter_heli':
+                if (this.highJinx && player.inVehicle === this.highJinx.helicopter) completed = true;
+                break;
+            case 'high_jinx_return_heli':
+                if (this.highJinx && player.inVehicle === this.highJinx.helicopter && (step.targetPos || step.targetTile)) {
+                    const tx = step.targetPos ? step.targetPos.x : step.targetTile.x * TILE;
+                    const ty = step.targetPos ? step.targetPos.y : step.targetTile.y * TILE;
+                    if (Collision.dist(player.x, player.y, tx, ty) < step.radius &&
+                        Math.abs(player.inVehicle.speed) < 40) {
+                        completed = true;
+                    }
+                }
+                break;
+            case 'high_jinx_exit_heli':
+                if (this.highJinx && !player.inVehicle && this.highJinx.helicopter && (step.targetPos || step.targetTile)) {
+                    const tx = step.targetPos ? step.targetPos.x : step.targetTile.x * TILE;
+                    const ty = step.targetPos ? step.targetPos.y : step.targetTile.y * TILE;
+                    if (Collision.dist(this.highJinx.helicopter.x, this.highJinx.helicopter.y, tx, ty) < step.radius) {
+                        if (world && world.helipadOpen) completed = true;
+                        else {
+                            this.failMission('You got back too late and the gate was closed.', audio, vehicles);
+                            return;
+                        }
+                    }
+                }
+                break;
+            case 'high_jinx_outro':
+                if (!player.inVehicle && this.darnell && this.darnell.alive &&
+                    Collision.dist(player.x, player.y, this.darnell.x, this.darnell.y) < 96 &&
+                    (!this.chatBox || !this.chatBox.active)) {
+                    this.openChat('Darnell', [
+                        'Nice pull. Thanks for getting my stuff back in one piece.',
+                        'Keep your ears open. That cop leaves the gate open all the time when he is not looking.',
+                        'Check back with me, we might borrow that bird again.'
+                    ], 'high_jinx_outro');
+                }
+                break;
         }
 
         if (completed) {
@@ -692,13 +923,40 @@ class MissionSystem {
         this.currentStep = 0;
         this.missionTimer = 0;
         this.timerActive = false;
+        this.displayTimer = null;
         this.firstRideWaitShown = false;
         this.firstRideAttorneyChatShown = false;
         this.firstRideAttorneyDropDone = false;
         this.darnell = null;
+        this.jj = null;
         this.chatBox = null;
+        this.chatContext = null;
+        this.highJinx = null;
         this.showMessage(`MISSION: ${this.activeMission.name} — ${this.activeMission.description}`);
         audio.playPickup();
+        if (this.activeMission.id === 'high_jinx') {
+            this.darnell = {
+                x: 35.5 * TILE,
+                y: 26.5 * TILE,
+                alive: true,
+                angle: Math.PI,
+                state: 'idle'
+            };
+            this.jj = {
+                x: 9.5 * TILE,
+                y: 66.5 * TILE,
+                alive: true,
+                angle: 0,
+                name: 'JJ',
+                sprite: 'npc_beach_tourist_front'
+            };
+            const missionHelicopter = this.ensureHighJinxHelicopter(vehicles, images);
+            this.highJinx = {
+                helicopter: missionHelicopter,
+                packagePickedUp: false,
+                keepDarnellAfterMission: false
+            };
+        }
         if (this.activeMission.id === 'repo_job') {
             this.spawnRepoVehicle(vehicles, images);
         }
@@ -725,9 +983,21 @@ class MissionSystem {
     _cleanupFirstRide() {
         this.darnell = null;
         this.chatBox = null;
+        this.chatContext = null;
         this.firstRideWaitShown = false;
         this.firstRideAttorneyChatShown = false;
         this.firstRideAttorneyDropDone = false;
+    }
+
+    _cleanupHighJinx() {
+        if (!(this.highJinx && this.highJinx.keepDarnellAfterMission)) {
+            this.darnell = null;
+        }
+        this.jj = null;
+        this.chatBox = null;
+        this.chatContext = null;
+        this.highJinx = null;
+        this.displayTimer = null;
     }
 
     completeMission(player, audio, vehicles) {
@@ -736,6 +1006,7 @@ class MissionSystem {
         this.showMessage(`MISSION COMPLETE: ${this.activeMission.name}! +$${this.activeMission.reward}`);
 
         if (this.activeMission.id === 'first_ride') this._cleanupFirstRide();
+        if (this.activeMission.id === 'high_jinx') this._cleanupHighJinx();
         if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
         if (this.activeMission.id === 'the_armored_job') this._cleanupArmoredJob(vehicles);
 
@@ -757,12 +1028,14 @@ class MissionSystem {
         const name = this.activeMission.name;
         this.showMessage(`MISSION FAILED: ${name} — ${reason}`);
         if (this.activeMission.id === 'first_ride') this._cleanupFirstRide();
+        if (this.activeMission.id === 'high_jinx') this._cleanupHighJinx();
         if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
         if (this.activeMission.id === 'the_armored_job') this._cleanupArmoredJob(vehicles);
         this.activeMission = null;
         this.currentStep = 0;
         this.timerActive = false;
         this.missionTimer = 0;
+        this.displayTimer = null;
         this.setupMarkers();
     }
 
@@ -787,6 +1060,21 @@ class MissionSystem {
         if (step.type === 'find_darnell' && this.darnell && this.darnell.alive) {
             return { x: this.darnell.x, y: this.darnell.y };
         }
+        if ((step.type === 'high_jinx_intro' || step.type === 'high_jinx_wait_for_gate') && this.darnell && this.darnell.alive) {
+            return { x: this.darnell.x, y: this.darnell.y };
+        }
+        if (step.type === 'high_jinx_outro' && this.darnell && this.darnell.alive) {
+            return { x: this.darnell.x, y: this.darnell.y };
+        }
+        if (step.type === 'high_jinx_enter_heli' && this.highJinx && this.highJinx.helicopter) {
+            return { x: this.highJinx.helicopter.x, y: this.highJinx.helicopter.y };
+        }
+        if (step.type === 'high_jinx_reenter_heli' && this.highJinx && this.highJinx.helicopter) {
+            return { x: this.highJinx.helicopter.x, y: this.highJinx.helicopter.y };
+        }
+        if ((step.type === 'high_jinx_meet_jj' || step.type === 'high_jinx_close_jj_chat') && this.jj && this.jj.alive) {
+            return { x: this.jj.x, y: this.jj.y };
+        }
         if (step.type === 'get_rpg' && this.rpgPickup && this.rpgPickup.active) {
             return { x: this.rpgPickup.x, y: this.rpgPickup.y };
         }
@@ -800,6 +1088,7 @@ class MissionSystem {
     }
 
     getMissionTimer() {
+        if (this.displayTimer !== null) return Math.max(0, this.displayTimer);
         if (!this.timerActive) return null;
         return Math.max(0, this.missionTimer);
     }
@@ -830,6 +1119,31 @@ class MissionSystem {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
             ctx.fillText('DARNELL', d.x, d.y - 33);
+            ctx.restore();
+        }
+
+        if (this.jj && this.jj.alive) {
+            const j = this.jj;
+            const img = images[j.sprite] || images['npc_beach_tourist_front'];
+            ctx.save();
+            ctx.strokeStyle = 'rgba(0, 220, 255, 0.9)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(j.x, j.y, 16, 0, Math.PI * 2);
+            ctx.stroke();
+            if (img) {
+                ctx.drawImage(img, j.x - 12, j.y - 18, 24, 36);
+            } else {
+                ctx.fillStyle = '#22ddee';
+                ctx.fillRect(j.x - 10, j.y - 16, 20, 32);
+            }
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(j.x - 18, j.y - 34, 36, 14);
+            ctx.fillStyle = '#22ddee';
+            ctx.font = 'bold 10px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('JJ', j.x, j.y - 33);
             ctx.restore();
         }
 
@@ -933,6 +1247,17 @@ class MissionSystem {
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.arc(this.darnell.x, this.darnell.y, 22 + pulse, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        if (this.jj && this.jj.alive) {
+            const pulse = Math.sin(Date.now() / 400) * 4;
+            ctx.save();
+            ctx.strokeStyle = '#22ddee';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(this.jj.x, this.jj.y, 22 + pulse, 0, Math.PI * 2);
             ctx.stroke();
             ctx.restore();
         }

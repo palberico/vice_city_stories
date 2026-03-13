@@ -123,7 +123,7 @@ class HUD {
         // ---- Mission Objective ----
         const objective = missions.getCurrentObjective();
         if (objective) {
-            const objectiveLines = this.wrapHudText(ctx, `★ ${objective}`, Math.min(860, W - 40), 3);
+            const objectiveLines = this.wrapHudText(ctx, `★ ${objective}`, Math.min(860, W - 40));
             const objectiveH = 18 + objectiveLines.length * 16;
             ctx.fillStyle = 'rgba(0,0,0,0.6)';
             ctx.fillRect(W / 2 - 430, 10, 860, objectiveH);
@@ -152,7 +152,7 @@ class HUD {
         if (missions.messageTimer > 0) {
             const alpha = Math.min(1, missions.messageTimer);
             const isFailed = missions.missionMessage.startsWith('MISSION FAILED');
-            const messageLines = this.wrapHudText(ctx, missions.missionMessage, Math.min(860, W - 40), 3);
+            const messageLines = this.wrapHudText(ctx, missions.missionMessage, Math.min(860, W - 40));
             const messageY = raceTimer !== null ? 92 : 58;
             const messageH = 16 + messageLines.length * 16;
             ctx.fillStyle = `rgba(0,0,0,${0.7 * alpha})`;
@@ -209,7 +209,7 @@ class HUD {
             ctx.fillStyle = '#ff8800';
             ctx.font = 'bold 13px "Segoe UI", Arial';
             ctx.textAlign = 'left';
-            ctx.fillText('DARNELL:', bx + 18, by + 24);
+            ctx.fillText(`${(missions.chatBox.speaker || 'Darnell').toUpperCase()}:`, bx + 18, by + 24);
             ctx.fillStyle = '#ffffff';
             ctx.font = '12px "Segoe UI", Arial';
             const lines = missions.chatBox.lines || [];
@@ -244,10 +244,11 @@ class HUD {
         }
     }
 
-    wrapHudText(ctx, text, maxWidth, maxLines = 2) {
+    wrapHudText(ctx, text, maxWidth, maxLines = Infinity) {
         const words = String(text || '').split(/\s+/).filter(Boolean);
         const lines = [];
         let line = '';
+        const limited = Number.isFinite(maxLines);
 
         for (const word of words) {
             const test = line ? `${line} ${word}` : word;
@@ -256,13 +257,13 @@ class HUD {
             } else {
                 lines.push(line);
                 line = word;
-                if (lines.length >= maxLines) break;
+                if (limited && lines.length >= maxLines) break;
             }
         }
 
-        if (lines.length < maxLines && line) lines.push(line);
+        if ((!limited || lines.length < maxLines) && line) lines.push(line);
 
-        if (lines.length === maxLines) {
+        if (limited && lines.length === maxLines) {
             const consumed = lines.join(' ').split(/\s+/).filter(Boolean).length;
             if (consumed < words.length) {
                 let truncated = lines[lines.length - 1];

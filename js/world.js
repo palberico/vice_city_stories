@@ -744,6 +744,7 @@ class World {
             ['73,13', { key: 'landscape/grass_fence1', rot: -Math.PI / 2 }],
             ['74,13', { key: 'landscape/grass_fence1', rot: -Math.PI / 2 }],
             ['75,13', { key: 'landscape/grass_fence1', rot: -Math.PI / 2 }],
+            ['9,68', { key: 'sidewalk/corner', rot: -Math.PI / 2 }],
         ]);
 
         // East-west road markings — applied to every segment between adjacent vertical roads
@@ -856,6 +857,13 @@ class World {
         this.helipadOpen = false;
         this.helipadTimer = 0;
 
+        // Fish market on the southwest beach
+        for (let ty = 66; ty <= 68; ty++) {
+            for (let tx = 6; tx <= 8; tx++) {
+                this.tiles[ty][tx] = T.BUILDING;
+            }
+        }
+
         // Explicit tile sprite overrides — applied after road marking loops so they are not overwritten
 
         // Fill all intersections with asphalt_blank
@@ -885,6 +893,7 @@ class World {
         this.multiTileSprites = [
             { tx: 33, ty: 27, tw: 3, th: 3, key: 'roads/parking/helipad_closed' },
             { tx: 48, ty: 46, tw: 3, th: 3, key: 'roads/parking/helipad_closed' },
+            { tx: 6, ty: 66, tw: 3, th: 3, key: 'buildings/fish_market', rot: -Math.PI / 2 },
         ];
     }
 
@@ -1133,7 +1142,17 @@ class World {
                 const img = images[s.key];
                 if (!img || !img.complete || !img.width) continue;
                 if (!camera.isVisible(s.tx * TILE, s.ty * TILE, s.tw * TILE, s.th * TILE)) continue;
-                ctx.drawImage(img, s.tx * TILE, s.ty * TILE, s.tw * TILE, s.th * TILE);
+                if (s.rot) {
+                    const w = s.tw * TILE;
+                    const h = s.th * TILE;
+                    ctx.save();
+                    ctx.translate(s.tx * TILE + w / 2, s.ty * TILE + h / 2);
+                    ctx.rotate(s.rot);
+                    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+                    ctx.restore();
+                } else {
+                    ctx.drawImage(img, s.tx * TILE, s.ty * TILE, s.tw * TILE, s.th * TILE);
+                }
             }
         }
 
@@ -1262,11 +1281,12 @@ class World {
             this.helipadOpen = !this.helipadOpen;
             const key = this.helipadOpen ? 'roads/parking/helipad_open' : 'roads/parking/helipad_closed';
             this.multiTileSprites[0] = { tx: 33, ty: 27, tw: 3, th: 3, key };
-            // Open: unlock entry tile (34,27) and boarding tile (34,28)
+            // Open: unlock the gate, landing tile, and the surrounding walkway tiles
             // Closed: re-block all 9 tiles
+            const openTiles = new Set(['34,27', '33,28', '34,28', '35,28', '34,29']);
             for (let ty = 27; ty <= 29; ty++) {
                 for (let tx = 33; tx <= 35; tx++) {
-                    if (this.helipadOpen && tx === 34 && (ty === 27 || ty === 28)) {
+                    if (this.helipadOpen && openTiles.has(`${tx},${ty}`)) {
                         this.tiles[ty][tx] = T.ROAD; // walkable when open
                     } else {
                         this.tiles[ty][tx] = T.BUILDING;
@@ -1274,6 +1294,10 @@ class World {
                 }
             }
         }
+    }
+
+    getHelipadTimeRemaining() {
+        return Math.max(0, 180 - this.helipadTimer);
     }
 
     checkBuildingCollision(x, y, w, h) {

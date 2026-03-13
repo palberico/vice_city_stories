@@ -243,6 +243,7 @@ class Game {
             'roads/stoplight',
             'buildings/gas',
             'buildings/parkinglot',
+            'buildings/fish_market',
             'buildings/lawyer',
             'buildings/building1',
             'buildings/building2',
@@ -302,6 +303,7 @@ class Game {
             'roads/stoplight': 'assets/roads/stoplight.png',
             'buildings/gas': 'assets/buildings/gas.png',
             'buildings/parkinglot': 'assets/buildings/parkinglot.png',
+            'buildings/fish_market': 'assets/buildings/fish_market.png',
             'buildings/lawyer': 'assets/buildings/lawyer.png',
             'buildings/building1': 'assets/buildings/building1.png',
             'buildings/building2': 'assets/buildings/building2.png',
@@ -338,6 +340,7 @@ class Game {
             'car_sports_red', 'car_sports_blue', 'car_sports_green', 'car_sports_white',
             'car_sedan_red', 'car_sedan_blue', 'car_sedan_green', 'car_sedan_white',
             'hospital', 'police_building', 'bank', 'safe_house', 'house1', 'house2', 'house3', 'skyscraper1',
+            'buildings/fish_market',
             'npc_business_man_front', 'npc_business_man_back',
             'npc_business_man_front_walk', 'npc_business_man_back_walk',
             'npc_beach_tourist_front', 'npc_beach_tourist_back',
@@ -678,7 +681,9 @@ class Game {
         this.world.updateHelipad(dt);
 
         // Chatbox close (consume E before player uses it for enter/exit vehicle)
-        if (this.missions.chatBox && this.missions.chatBox.active && Input.isDown('e')) {
+        if (this.missions.chatBox && this.missions.chatBox.active &&
+            (this.missions.chatCloseDelay || 0) <= 0 &&
+            Input.isDown('e')) {
             Input.keys['e'] = false;
             this.missions.chatBox.active = false;
             if (this.missions.handleChatClosed) this.missions.handleChatClosed();
@@ -753,7 +758,7 @@ class Game {
         this.police.update(dt, this.player, this.world, this.vehicles, this.images, this.audio, this.particles);
 
         // Update missions
-        this.missions.update(dt, this.player, this.audio, this.vehicles, this.images);
+        this.missions.update(dt, this.player, this.audio, this.vehicles, this.images, this.world);
 
         // Vehicle ran over Darnell
         if (this.player.inVehicle && this.missions.darnell && this.missions.darnell.alive) {
@@ -765,6 +770,12 @@ class Game {
                 this.missions.darnell.alive = false;
                 this.particles.blood(this.missions.darnell.x, this.missions.darnell.y);
             }
+        }
+        if (this.player.inVehicle && this.missions.jj && this.missions.jj.alive &&
+            Math.abs(this.player.inVehicle.speed) > 40 &&
+            Collision.dist(this.player.x, this.player.y, this.missions.jj.x, this.missions.jj.y) < 32) {
+            this.missions.jj.alive = false;
+            this.particles.blood(this.missions.jj.x, this.missions.jj.y);
         }
 
         // Update particles
@@ -845,6 +856,18 @@ class Game {
                     if (Collision.aabb(b, { x: d.x - 9, y: d.y - 9, w: 18, h: 18 })) {
                         d.alive = false;
                         this.particles.blood(d.x, d.y);
+                        b.active = false;
+                        hitAny = true;
+                    }
+                }
+                if (hitAny) continue;
+
+                // Hit JJ (mission NPC)
+                if (this.missions.jj && this.missions.jj.alive && b.active) {
+                    const j = this.missions.jj;
+                    if (Collision.aabb(b, { x: j.x - 9, y: j.y - 9, w: 18, h: 18 })) {
+                        j.alive = false;
+                        this.particles.blood(j.x, j.y);
                         b.active = false;
                         hitAny = true;
                     }
