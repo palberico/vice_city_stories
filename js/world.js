@@ -26,8 +26,8 @@ const TILE_COLORS = {
 };
 
 // Special fixed locations — placed inside city blocks between road grid lines
-const HOSPITAL_PX = { x: 45 * TILE, y: 46 * TILE }; // center of 4x4 hospital block
-const HOSPITAL_DOOR_PX = { x: 45 * TILE, y: 48 * TILE - 8 }; // front door at the south face of the hospital
+const HOSPITAL_PX = { x: 45 * TILE, y: 47 * TILE }; // center of 4x4 hospital block
+const HOSPITAL_DOOR_PX = { x: 45 * TILE, y: 49 * TILE - 8 }; // front door at the south face of the hospital
 const STATION_PX = { x: 34 * TILE + TILE / 2, y: 32 * TILE + TILE / 2 }; // center of 5x5 police station
 const STATION_PARKING_PX = { x: 34 * TILE + TILE / 2, y: 35 * TILE + TILE / 2 }; // one tile south of station
 // Designated patrol car spawn spots — one car per tile, checked before spawning
@@ -43,7 +43,7 @@ const HOSPITAL_PICKUP_PX = { x: 44 * TILE, y: 50 * TILE };
 const ATTORNEY_DROP_PX = { x: 76 * TILE, y: 22 * TILE };
 const ATTORNEY_OFFICE_PX = { x: 71 * TILE, y: 21 * TILE };
 const PAY_SPRAY_PX = { x: 16.5 * TILE, y: 63 * TILE };
-const HEAL_PX = { x: 45 * TILE, y: 49.5 * TILE }; // two tiles south of hospital
+const HEAL_PX = { x: 45 * TILE, y: 50.5 * TILE }; // two tiles south of hospital
 const LAWYER_PX = { x: 73 * TILE + TILE / 2, y: 19 * TILE }; // center of 5x4 lawyer building
 const BANK_PX = { x: 56 * TILE, y: 29 * TILE }; // center of 4-tile robbery zone (SW corner of tile 56,28)
 
@@ -333,7 +333,7 @@ class World {
 
         // ---- Hospital block — 4x4, with a 4x4 skyscraper directly north ----
         {
-            const HBX = 43, HBY = 44, HBW = 4, HBH = 4;
+            const HBX = 43, HBY = 45, HBW = 4, HBH = 4;
             this.buildings = this.buildings.filter(b => {
                 const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
                 const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
@@ -354,7 +354,7 @@ class World {
         }
 
         {
-            const SKX = 43, SKY = 40, SKW = 4, SKH = 4;
+            const SKX = 43, SKY = 41, SKW = 4, SKH = 4;
             this.buildings = this.buildings.filter(b => {
                 const bl = Math.floor(b.x / TILE), bt = Math.floor(b.y / TILE);
                 const br = Math.floor((b.x + b.w - 1) / TILE), bb = Math.floor((b.y + b.h - 1) / TILE);
@@ -728,14 +728,10 @@ class World {
             ['29,29', 'roads/parking/police_parking'],
             ['30,29', 'roads/parking/police_parking'],
             ['31,29', 'roads/parking/police_parking'],
-            ['44,48', 'roads/parking/ambulance'],
-            ['45,48', 'roads/parking/ambulance'],
-            ['43,48', 'roads/asphalt_blank2'],
-            ['46,48', 'roads/asphalt_blank2'],
+            ['47,45', 'roads/asphalt_blank2'],
+            ['47,46', 'roads/parking/ambulance'],
+            ['47,47', 'roads/asphalt_blank2'],
             ['47,48', 'roads/asphalt_blank2'],
-            ['48,48', 'roads/asphalt_blank2'],
-            ['49,48', 'roads/er'],
-            ['50,48', 'roads/asphalt_blank2'],
             ['75,14', 'landscape/grass'],
             ['75,15', 'landscape/grass'],
             ['75,16', 'landscape/grass'],
@@ -888,6 +884,7 @@ class World {
         // SW corner at (33,29) → NW corner at (33,27), 3×3 tiles
         this.multiTileSprites = [
             { tx: 33, ty: 27, tw: 3, th: 3, key: 'roads/parking/helipad_closed' },
+            { tx: 48, ty: 46, tw: 3, th: 3, key: 'roads/parking/helipad_closed' },
         ];
     }
 
@@ -967,6 +964,9 @@ class World {
             set(tx, 21, 'sidewalk/sidewalk_plain', Math.PI); // south face (row above road at y=22)
             set(tx, 12, 'sidewalk/sidewalk_plain', 0);       // north face (row below road at y=8-11)
         }
+
+        // Hospital-side sidewalk label override.
+        set(47, 49, 'roads/er', 0);
     }
 
     getTile(x, y) {
