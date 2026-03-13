@@ -729,9 +729,18 @@ class World {
             ['30,29', 'roads/parking/police_parking'],
             ['31,29', 'roads/parking/police_parking'],
             ['47,45', 'roads/asphalt_blank2'],
+            ['48,45', 'roads/asphalt_blank2'],
+            ['49,45', 'roads/asphalt_blank2'],
+            ['50,45', 'roads/asphalt_blank2'],
             ['47,46', 'roads/parking/ambulance'],
             ['47,47', 'roads/asphalt_blank2'],
             ['47,48', 'roads/asphalt_blank2'],
+            ['6,64', { key: 'sidewalk/deck1', rot: Math.PI / 2 }],
+            ['7,64', { key: 'sidewalk/deck1', rot: Math.PI / 2 }],
+            ['8,64', { key: 'sidewalk/deck1', rot: Math.PI / 2 }],
+            ['6,68', { key: 'sidewalk/deck1', rot: -Math.PI / 2 }],
+            ['7,68', { key: 'sidewalk/deck1', rot: -Math.PI / 2 }],
+            ['8,68', { key: 'sidewalk/deck1', rot: -Math.PI / 2 }],
             ['75,14', 'landscape/grass'],
             ['75,15', 'landscape/grass'],
             ['75,16', 'landscape/grass'],
@@ -858,7 +867,7 @@ class World {
         this.helipadTimer = 0;
 
         // Fish market on the southwest beach
-        for (let ty = 66; ty <= 68; ty++) {
+        for (let ty = 65; ty <= 67; ty++) {
             for (let tx = 6; tx <= 8; tx++) {
                 this.tiles[ty][tx] = T.BUILDING;
             }
@@ -893,8 +902,10 @@ class World {
         this.multiTileSprites = [
             { tx: 33, ty: 27, tw: 3, th: 3, key: 'roads/parking/helipad_closed' },
             { tx: 48, ty: 46, tw: 3, th: 3, key: 'roads/parking/helipad_closed' },
-            { tx: 6, ty: 66, tw: 3, th: 3, key: 'buildings/fish_market', rot: -Math.PI / 2 },
+            { tx: 6, ty: 65, tw: 3, th: 3, key: 'buildings/fish_market', rot: -Math.PI / 2 },
         ];
+
+        this.hiddenPalmTiles = new Set(['8,64', '8,68']);
     }
 
     _buildSidewalkSprites() {
@@ -973,6 +984,12 @@ class World {
             set(tx, 21, 'sidewalk/sidewalk_plain', Math.PI); // south face (row above road at y=22)
             set(tx, 12, 'sidewalk/sidewalk_plain', 0);       // north face (row below road at y=8-11)
         }
+
+        set(46, 49, 'sidewalk/corner', Math.PI);
+        set(48, 49, 'sidewalk/corner', -Math.PI / 2);
+        set(51, 46, 'sidewalk/corner', Math.PI / 2);
+        set(51, 44, 'sidewalk/corner', Math.PI);
+        set(51, 45, 'roads/ashphalt_exit', Math.PI / 2);
 
         // Hospital-side sidewalk label override.
         set(47, 49, 'roads/er', 0);
@@ -1115,7 +1132,8 @@ class World {
                 if (tile === T.GRASS && (x + y) % 2 === 0) {
                     const onWestStrip = (x === 7 || x === 8) && y < WORLD_H - 7;
                     const onSouthStrip = (y === WORLD_H - 7 || y === WORLD_H - 8) && x >= 7;
-                    if (onWestStrip || onSouthStrip) {
+                    const hiddenPalm = this.hiddenPalmTiles && this.hiddenPalmTiles.has(`${x},${y}`);
+                    if ((onWestStrip || onSouthStrip) && !hiddenPalm) {
                         const cx = x * TILE + TILE / 2;
                         const cy = y * TILE + TILE / 2;
                         ctx.fillStyle = '#5c3a10';
