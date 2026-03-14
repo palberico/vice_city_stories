@@ -97,8 +97,9 @@ class MenuSystem {
             'SHIFT — Sprint                      SPACE — Handbrake',
             'F — Rob NPC                         R — Change Radio',
             'TAB — Phone (Missions)              M — Full Map',
-            'H — Buy HP at Hospital ($25)        L — Lawyer: Drop ★ ($200)',
-            'I — Controls Info                   ESC — Pause',
+            'S — Save at Safe House              H — Buy HP at Hospital ($25)',
+            'L — Lawyer: Drop ★ ($200)           I — Controls Info',
+            'ESC — Pause',
         ];
         const controlsStartY = hasSaveData ? H * 0.76 : H * 0.73;
         controls.forEach((c, i) => {

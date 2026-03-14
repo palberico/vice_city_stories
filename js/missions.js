@@ -62,14 +62,16 @@ const MISSION_DATA = [
     {
         id: 'repo_job',
         name: 'Repo Job',
-        description: 'Steal the marked sports car in the SE and bring it to the garage.',
+        description: 'Meet Darnell behind Pay \'n\' Spray, repossess his car, lose the cops, and bring it back.',
         reward: 1500,
-        startTile: { x: 60, y: 58 },   // SE
+        startTile: { x: 16, y: 58 },
         available: false,
         steps: [
-            { type: 'go_to', text: 'Find the repo car in the SE', targetTile: { x: 72, y: 58 }, radius: 120 },
-            { type: 'enter_repo_vehicle', text: 'Steal the marked car' },
-            { type: 'drive_to', text: 'Deliver to the garage', targetTile: { x: 46, y: 44 }, radius: 100 }
+            { type: 'repo_intro', text: 'Talk to Darnell' },
+            { type: 'enter_repo_vehicle', text: 'Steal Darnell\'s car', targetTile: { x: 76, y: 18 }, radius: 110 },
+            { type: 'lose_wanted', text: 'Lose the police!' },
+            { type: 'repo_return_car', text: 'Bring Darnell\'s car back', targetPos: { x: 19.5 * TILE, y: 60.5 * TILE }, radius: 90 },
+            { type: 'repo_outro', text: 'Talk to Darnell' }
         ]
     },
     {
@@ -232,6 +234,7 @@ class MissionSystem {
         this.highJinx = null;
         this.pickupTruck = null;
         this.pickupJob = null;
+        this.repoJob = null;
         this.departingNPCs = [];
         this.displayTimer = null;
         this.onStateChange = options.onStateChange || null;
@@ -279,17 +282,9 @@ class MissionSystem {
         const firstRide = this.missions.find(m => m.id === 'first_ride');
         if (!firstRide) return;
 
-        if (!firstRide.completed) {
-            for (const mission of this.missions) {
-                mission.available = mission.id === 'first_ride';
-            }
-            return;
-        }
-
-        const availableIncomplete = this.missions.filter(m => !m.completed && m.available);
-        if (availableIncomplete.length === 0) {
-            const next = this.missions.find(m => !m.completed);
-            if (next) next.available = true;
+        const next = this.missions.find(m => !m.completed);
+        for (const mission of this.missions) {
+            mission.available = !!next && mission.id === next.id;
         }
     }
 
@@ -304,17 +299,24 @@ class MissionSystem {
     }
 
     spawnRepoVehicle(vehicles, images) {
-        const mission = this.missions.find(m => m.id === 'repo_job');
-        const step0 = mission && mission.steps[0];
-        const tx = step0 ? step0.targetTile.x * TILE : 72 * TILE;
-        const ty = step0 ? step0.targetTile.y * TILE : 58 * TILE;
-        const repoCar = new Vehicle(tx, ty, 'sports', images);
+        const targetX = 76.5 * TILE;
+        const targetY = 18.5 * TILE;
+        const existing = vehicles.find(v => Collision.dist(v.x, v.y, targetX, targetY) < 48);
+        const repoCar = existing || new Vehicle(targetX, targetY, 'sports', images);
+        if (!existing) vehicles.push(repoCar);
+        repoCar.x = targetX;
+        repoCar.y = targetY;
         repoCar.isRepoTarget = true;
         repoCar.ai.active = false;
         repoCar.speed = 0;
-        repoCar.angle = Math.PI / 4;
+        repoCar.angle = Math.PI / 2;
+        repoCar.health = Math.max(repoCar.health, 100);
+        if (images['car_sports_red']) {
+            repoCar.img = images['car_sports_red'];
+            repoCar.imgKey = 'car_sports_red';
+        }
         this.repoVehicle = repoCar;
-        vehicles.push(repoCar);
+        return repoCar;
     }
 
     ensureHighJinxHelicopter(vehicles, images) {
@@ -596,6 +598,18 @@ class MissionSystem {
                 return;
             }
         }
+
+        if (this.activeMission.id === 'repo_job') {
+            if (context === 'repo_intro') {
+                this.currentStep = 1;
+                this.showMessage(this.activeMission.steps[this.currentStep].text);
+                return;
+            }
+            if (context === 'repo_outro') {
+                if (this.repoJob) this.repoJob.outroDone = true;
+                return;
+            }
+        }
     }
 
     onVehicleRepaint(vehicle, colorChoice) {
@@ -608,7 +622,7 @@ class MissionSystem {
     _updateDarnell(dt, player) {
         if (!this.darnell || !this.darnell.alive) return;
 
-        if (this.darnell.state === 'walking_to_car') {
+        if (this.darnell.state === 'walking_to_car' || this.darnell.state === 'walking_to_repo_car') {
             const targetVehicle = this.darnell.vehicle;
             if (!targetVehicle || targetVehicle.health <= 0) {
                 this.darnell.alive = false;
@@ -623,9 +637,21 @@ class MissionSystem {
                 this.darnell.x += (dx / dist) * speed * dt;
                 this.darnell.y += (dy / dist) * speed * dt;
             } else {
-                this.darnell.state = 'in_car';
-                this.darnell.vehicle = targetVehicle;
-                this.showMessage('Darnell is in. Take him to the attorney.');
+                if (this.darnell.state === 'walking_to_repo_car') {
+                    this.darnell.alive = false;
+                    targetVehicle.isRepoDeparting = true;
+                    targetVehicle.isRepoTarget = false;
+                    targetVehicle._repoWaypoints = [
+                        { x: 19.5 * TILE, y: 64.5 * TILE }
+                    ];
+                    targetVehicle._repoWaypointIdx = 0;
+                    targetVehicle.speed = 0;
+                    targetVehicle.angle = Math.PI / 2;
+                } else {
+                    this.darnell.state = 'in_car';
+                    this.darnell.vehicle = targetVehicle;
+                    this.showMessage('Darnell is in. Take him to the attorney.');
+                }
             }
         } else if (this.darnell.state === 'in_car') {
             const ride = this.darnell.vehicle;
@@ -663,6 +689,28 @@ class MissionSystem {
         this.displayTimer = null;
         this.chatCloseDelay = Math.max(0, this.chatCloseDelay - dt);
         this._updateDarnell(dt, player);
+        if (this.repoVehicle && this.repoVehicle.isRepoDeparting) {
+            const wp = this.repoVehicle._repoWaypoints && this.repoVehicle._repoWaypoints[this.repoVehicle._repoWaypointIdx || 0];
+            if (wp) {
+                const dx = wp.x - this.repoVehicle.x;
+                const dy = wp.y - this.repoVehicle.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const speed = 120;
+                this.repoVehicle.angle = Math.PI / 2;
+                if (dist > 10) {
+                    this.repoVehicle.x += (dx / dist) * speed * dt;
+                    this.repoVehicle.y += (dy / dist) * speed * dt;
+                } else {
+                    this.repoVehicle._repoWaypointIdx++;
+                }
+            } else {
+                this.repoVehicle.isRepoDeparting = false;
+                this.repoVehicle.ai.active = true;
+                this.repoVehicle.ai.targetSpeed = 100;
+                this.repoVehicle.speed = 40;
+                this.repoVehicle = null;
+            }
+        }
         this.departingNPCs = this.departingNPCs.filter(npc => npc && npc.alive);
         for (const npc of this.departingNPCs) this._updateWalkingNpc(npc, dt);
 
@@ -688,6 +736,10 @@ class MissionSystem {
         }
         if (this.activeMission.id === 'repo_job' && this.repoVehicle && this.repoVehicle.health <= 0) {
             this.failMission('The car was destroyed!', audio, vehicles);
+            return;
+        }
+        if (this.activeMission.id === 'repo_job' && this.darnell && !this.darnell.alive) {
+            this.failMission('Darnell was killed!', audio, vehicles);
             return;
         }
         if (this.activeMission.id === 'the_pickup') {
@@ -889,7 +941,45 @@ class MissionSystem {
                 }
                 break;
             case 'enter_repo_vehicle':
-                if (player.inVehicle && player.inVehicle.isRepoTarget) completed = true;
+                if (player.inVehicle && player.inVehicle.isRepoTarget) {
+                    player.addWanted(3, audio);
+                    completed = true;
+                }
+                break;
+            case 'repo_intro':
+                if (!player.inVehicle && this.darnell && this.darnell.alive &&
+                    Collision.dist(player.x, player.y, this.darnell.x, this.darnell.y) < 96 &&
+                    (!this.chatBox || !this.chatBox.active)) {
+                    this.openChat('Darnell', [
+                        'My attorney took my ride for collateral and parked it across town.',
+                        'Go get my car back from that lot and bring it here in one piece.',
+                        'The second you touch it, the law will be all over you, so shake them before you come back.'
+                    ], 'repo_intro');
+                }
+                break;
+            case 'repo_return_car':
+                if (player.inVehicle && player.inVehicle === this.repoVehicle && (step.targetPos || step.targetTile)) {
+                    const tx = step.targetPos ? step.targetPos.x : step.targetTile.x * TILE;
+                    const ty = step.targetPos ? step.targetPos.y : step.targetTile.y * TILE;
+                    if (Collision.dist(player.x, player.y, tx, ty) < step.radius &&
+                        Math.abs(player.inVehicle.speed) < 25) {
+                        completed = true;
+                    }
+                }
+                break;
+            case 'repo_outro':
+                if (!player.inVehicle && this.darnell && this.darnell.alive &&
+                    Collision.dist(player.x, player.y, this.darnell.x, this.darnell.y) < 96 &&
+                    (!this.chatBox || !this.chatBox.active) && !(this.repoJob && this.repoJob.outroDone)) {
+                    this.openChat('Darnell', [
+                        'That is my car. Nice work getting it back clean.',
+                        'Here is your cut, and one more thing: my cousin Ray Ray says his chop shop is open to you anytime.',
+                        'Take care of your rides back there and he will take care of you.'
+                    ], 'repo_outro');
+                }
+                if (this.repoJob && this.repoJob.outroDone && (!this.chatBox || !this.chatBox.active)) {
+                    completed = true;
+                }
                 break;
             case 'drive_to':
                 if (player.inVehicle && step.targetTile) {
@@ -1161,6 +1251,7 @@ class MissionSystem {
         this.highJinx = null;
         this.pickupTruck = null;
         this.pickupJob = null;
+        this.repoJob = null;
         this.showMessage(`MISSION: ${this.activeMission.name} — ${this.activeMission.description}`);
         audio.playPickup();
         if (this.activeMission.id === 'the_pickup') {
@@ -1211,6 +1302,14 @@ class MissionSystem {
             };
         }
         if (this.activeMission.id === 'repo_job') {
+            this.darnell = {
+                x: 19.5 * TILE,
+                y: 58.5 * TILE,
+                alive: true,
+                angle: Math.PI,
+                state: 'idle'
+            };
+            this.repoJob = { outroDone: false };
             this.spawnRepoVehicle(vehicles, images);
         }
         if (this.activeMission.id === 'the_armored_job') {
@@ -1232,7 +1331,7 @@ class MissionSystem {
             if (this.activeMission.id === 'first_ride') this._cleanupFirstRide();
             if (this.activeMission.id === 'the_pickup') this._cleanupThePickup(vehicles);
             if (this.activeMission.id === 'high_jinx') this._cleanupHighJinx();
-            if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
+            if (this.activeMission.id === 'repo_job') this._cleanupRepoJob();
             if (this.activeMission.id === 'the_armored_job') this._cleanupArmoredJob(vehicles);
             this.activeMission = null;
             this.currentStep = 0;
@@ -1276,6 +1375,14 @@ class MissionSystem {
         this.displayTimer = null;
     }
 
+    _cleanupRepoJob() {
+        this.darnell = null;
+        this.chatBox = null;
+        this.chatContext = null;
+        this.repoJob = null;
+        this.removeRepoVehicle();
+    }
+
     _cleanupThePickup(vehicles) {
         this.darnell = null;
         this.jj = null;
@@ -1299,7 +1406,12 @@ class MissionSystem {
             this._cleanupThePickup(vehicles);
         }
         if (this.activeMission.id === 'high_jinx') this._cleanupHighJinx();
-        if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
+        if (this.activeMission.id === 'repo_job' && this.darnell && this.repoVehicle) {
+            this.darnell.state = 'walking_to_repo_car';
+            this.darnell.vehicle = this.repoVehicle;
+        } else if (this.activeMission.id === 'repo_job') {
+            this._cleanupRepoJob();
+        }
         if (this.activeMission.id === 'the_armored_job') this._cleanupArmoredJob(vehicles);
 
         this.activeMission.completed = true;
@@ -1307,9 +1419,7 @@ class MissionSystem {
         this.currentStep = 0;
         this.timerActive = false;
 
-        const next = this.missions.find(m => !m.completed && !m.available);
-        if (next) next.available = true;
-
+        this.normalizeMissionAvailability();
         this.setupMarkers();
         if (this.onMissionComplete) this.onMissionComplete(completedMission, player, vehicles);
         if (this.onStateChange) this.onStateChange(this.getMissionState());
@@ -1322,7 +1432,7 @@ class MissionSystem {
         if (this.activeMission.id === 'first_ride') this._cleanupFirstRide();
         if (this.activeMission.id === 'the_pickup') this._cleanupThePickup(vehicles);
         if (this.activeMission.id === 'high_jinx') this._cleanupHighJinx();
-        if (this.activeMission.id === 'repo_job') this.removeRepoVehicle(vehicles);
+        if (this.activeMission.id === 'repo_job') this._cleanupRepoJob();
         if (this.activeMission.id === 'the_armored_job') this._cleanupArmoredJob(vehicles);
         this.activeMission = null;
         this.currentStep = 0;
@@ -1354,6 +1464,9 @@ class MissionSystem {
             return { x: this.darnell.x, y: this.darnell.y };
         }
         if (step.type === 'pickup_intro' && this.darnell && this.darnell.alive) {
+            return { x: this.darnell.x, y: this.darnell.y };
+        }
+        if ((step.type === 'repo_intro' || step.type === 'repo_outro') && this.darnell && this.darnell.alive) {
             return { x: this.darnell.x, y: this.darnell.y };
         }
         if (step.type === 'pickup_enter_truck' && this.pickupTruck) {

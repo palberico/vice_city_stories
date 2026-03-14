@@ -2,7 +2,7 @@
 // NPC SYSTEM
 // ============================================
 class NPC {
-    constructor(x, y, type, charSprites) {
+    constructor(x, y, type, charSprites, getUnlockedDropWeapons = null) {
         this.x = x; this.y = y;
         this.w = 16; this.h = 16;
         this.type = type; // 'pedestrian' or 'traffic'
@@ -23,6 +23,7 @@ class NPC {
         this.crossCooldown = 3 + Math.random() * 8; // counts down; when it hits 0 the NPC will cross at the next corner
         this.wantsToCross = false;                   // true once cooldown expires — NPC crosses at next corner visited
         this.crossOnRoad = false; // true once NPC has entered road/intersection during a crossing
+        this.getUnlockedDropWeapons = getUnlockedDropWeapons;
     }
 
     update(dt, world, playerX, playerY, isShooting) {
@@ -281,7 +282,12 @@ class NPC {
             this.drop = { type: 'cash', amount: 1 + Math.floor(Math.random() * 50) };
         } else if (roll < 0.85) {
             // 15%: ammo drop
-            const weapons = ['pistol', 'smg', 'shotgun'];
+            const unlocked = this.getUnlockedDropWeapons ? this.getUnlockedDropWeapons() : ['pistol', 'smg', 'shotgun'];
+            const weapons = ['pistol', 'smg', 'shotgun'].filter(w => unlocked.includes(w));
+            if (!weapons.length) {
+                this.drop = { type: 'cash', amount: 1 + Math.floor(Math.random() * 50) };
+                return;
+            }
             const wpn = weapons[Math.floor(Math.random() * weapons.length)];
             this.drop = { type: 'weapon', weapon: wpn, ammo: 5 + Math.floor(Math.random() * 15) };
         }
@@ -360,17 +366,18 @@ class NPC {
 }
 
 class NPCManager {
-    constructor(world, count, characters) {
+    constructor(world, count, characters, getUnlockedDropWeapons = null) {
         this.npcs = [];
         this.world = world;
         this.characters = Array.isArray(characters) ? characters : [];
+        this.getUnlockedDropWeapons = getUnlockedDropWeapons;
         for (let i = 0; i < count; i++) {
             const sp = world.getRandomSpawnPoint();
             if (sp) {
                 const charSprites = this.characters.length > 0
                     ? this.characters[Math.floor(Math.random() * this.characters.length)]
                     : null;
-                this.npcs.push(new NPC(sp.x, sp.y, 'pedestrian', charSprites));
+                this.npcs.push(new NPC(sp.x, sp.y, 'pedestrian', charSprites, this.getUnlockedDropWeapons));
             }
         }
     }

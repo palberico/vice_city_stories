@@ -42,6 +42,7 @@ class Vehicle {
         this.type = type;
         const spec = VEHICLE_TYPES[type];
         this.name = spec.name;
+        this.baseTopSpeed = spec.topSpeed;
         this.topSpeed = spec.topSpeed;
         this.accel = spec.accel;
         this.handling = spec.handling;
@@ -67,6 +68,7 @@ class Vehicle {
         this.customColor = null;
         this.liftScale = 0; // 0 = grounded, 1 = fully airborne (helicopter only)
         this.isDrivewaySaved = false;
+        this.upgrades = { tires: false, exhaust: false, engine: false };
 
         // NPC AI driving
         this.ai = {
@@ -78,6 +80,14 @@ class Vehicle {
             stopTimer: 0,
             innerLane: Math.random() > 0.5
         };
+
+        this.refreshPerformance();
+    }
+
+    refreshPerformance() {
+        let speedBonus = 0;
+        if (this.upgrades.tires) speedBonus += (480 / 220) * 10;
+        this.topSpeed = this.baseTopSpeed + speedBonus;
     }
 
     update(dt, world, input, isPlayerDriving, player, allVehicles) {

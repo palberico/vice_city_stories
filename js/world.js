@@ -40,10 +40,13 @@ const SAFE_HOUSE_SPAWN_PX = { x: 18 * TILE + TILE / 2, y: 6 * TILE + TILE / 2 };
 const SAFE_HOUSE_MARKER_PX = { x: 16.5 * TILE, y: 7.5 * TILE }; // same zone, shifted 0.5 tile right for better alignment
 const SAFE_HOUSE_DRIVEWAY_PX = { x: 18.5 * TILE, y: 4.5 * TILE };
 const HOSPITAL_PICKUP_PX = { x: 44 * TILE, y: 50 * TILE };
+const HEAL_ZONE_RECT = { x: 44 * TILE, y: 49 * TILE, w: 2 * TILE, h: TILE };
+const RAY_RAY_GARAGE_RECT = { x: 16 * TILE, y: 57.5 * TILE, w: 2 * TILE, h: TILE };
+const RAY_RAY_GARAGE_PX = { x: RAY_RAY_GARAGE_RECT.x + RAY_RAY_GARAGE_RECT.w / 2, y: RAY_RAY_GARAGE_RECT.y + RAY_RAY_GARAGE_RECT.h / 2 };
 const ATTORNEY_DROP_PX = { x: 76 * TILE, y: 22 * TILE };
 const ATTORNEY_OFFICE_PX = { x: 71 * TILE, y: 21 * TILE };
 const PAY_SPRAY_PX = { x: 16.5 * TILE, y: 63.5 * TILE };
-const HEAL_PX = { x: 45 * TILE, y: 50.5 * TILE }; // two tiles south of hospital
+const HEAL_PX = { x: HEAL_ZONE_RECT.x + HEAL_ZONE_RECT.w / 2, y: HEAL_ZONE_RECT.y + HEAL_ZONE_RECT.h / 2 };
 const LAWYER_PX = { x: 73 * TILE + TILE / 2, y: 19 * TILE }; // center of 5x4 lawyer building
 const BANK_PX = { x: 56 * TILE, y: 29 * TILE }; // center of 4-tile robbery zone (SW corner of tile 56,28)
 
@@ -735,12 +738,24 @@ class World {
             ['47,46', 'roads/parking/ambulance'],
             ['47,47', 'roads/asphalt_blank2'],
             ['47,48', 'roads/asphalt_blank2'],
-            ['6,64', { key: 'sidewalk/deck1', rot: Math.PI / 2 }],
-            ['7,64', { key: 'sidewalk/deck1', rot: Math.PI / 2 }],
-            ['8,64', { key: 'sidewalk/deck1', rot: Math.PI / 2 }],
-            ['6,68', { key: 'sidewalk/deck1', rot: -Math.PI / 2 }],
-            ['7,68', { key: 'sidewalk/deck1', rot: -Math.PI / 2 }],
-            ['8,68', { key: 'sidewalk/deck1', rot: -Math.PI / 2 }],
+            ['19,62', 'landscape/cement_plain'],
+            ['19,61', 'landscape/cement_plain'],
+            ['19,60', 'landscape/cement_plain'],
+            ['19,59', 'landscape/cement_plain'],
+            ['5,68', 'sidewalk/deck1'],
+            ['6,68', 'sidewalk/deck1'],
+            ['7,68', 'sidewalk/deck1'],
+            ['8,68', 'sidewalk/deck1'],
+            ['5,63', 'sidewalk/deck1'],
+            ['6,63', 'sidewalk/deck1'],
+            ['7,63', 'sidewalk/deck1'],
+            ['8,63', 'sidewalk/deck1'],
+            ['4,68', 'sidewalk/deck2'],
+            ['4,67', 'sidewalk/deck2'],
+            ['4,66', 'sidewalk/deck2'],
+            ['4,65', 'sidewalk/deck2'],
+            ['4,64', 'sidewalk/deck2'],
+            ['4,63', 'sidewalk/deck2'],
             ['75,14', 'landscape/grass'],
             ['75,15', 'landscape/grass'],
             ['75,16', 'landscape/grass'],
@@ -867,8 +882,8 @@ class World {
         this.helipadTimer = 0;
 
         // Fish market on the southwest beach
-        for (let ty = 65; ty <= 67; ty++) {
-            for (let tx = 6; tx <= 8; tx++) {
+        for (let ty = 64; ty <= 67; ty++) {
+            for (let tx = 5; tx <= 8; tx++) {
                 this.tiles[ty][tx] = T.BUILDING;
             }
         }
@@ -902,10 +917,12 @@ class World {
         this.multiTileSprites = [
             { tx: 33, ty: 27, tw: 3, th: 3, key: 'roads/parking/helipad_closed' },
             { tx: 48, ty: 46, tw: 3, th: 3, key: 'roads/parking/helipad_closed' },
-            { tx: 6, ty: 65, tw: 3, th: 3, key: 'buildings/fish_market', rot: -Math.PI / 2 },
+            { tx: 5, ty: 64, tw: 4, th: 4, key: 'buildings/fish_market', rot: -Math.PI / 2 },
+            { tx: 15, ty: 55, tw: 5, th: 4, key: 'buildings/parkinglot2' },
+            { tx: 1, ty: 65, tw: 3, th: 1, key: 'sidewalk/deck2' },
         ];
 
-        this.hiddenPalmTiles = new Set(['8,64', '8,68']);
+        this.hiddenPalmTiles = new Set(['7,63', '8,64', '8,68']);
     }
 
     _buildSidewalkSprites() {
@@ -990,6 +1007,9 @@ class World {
         set(51, 46, 'sidewalk/corner', Math.PI / 2);
         set(51, 44, 'sidewalk/corner', Math.PI);
         set(51, 45, 'roads/ashphalt_exit', Math.PI / 2);
+        set(19, 63, 'roads/asphalt_blank2', 0);
+        set(18, 63, 'sidewalk/corner', Math.PI);
+        set(20, 63, 'sidewalk/corner', -Math.PI / 2);
 
         // Hospital-side sidewalk label override.
         set(47, 49, 'roads/er', 0);

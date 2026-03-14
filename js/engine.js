@@ -144,6 +144,65 @@ class Game {
         this.writeSaveData();
     }
 
+    capturePlayerState() {
+        if (!this.player) return null;
+        return {
+            x: this.player.x,
+            y: this.player.y,
+            angle: this.player.angle,
+            health: this.player.health,
+            armor: this.player.armor,
+            money: this.player.money,
+            wantedLevel: this.player.wantedLevel,
+            wantedDecayTimer: this.player.wantedDecayTimer,
+            stamina: this.player.stamina,
+            weapons: {
+                inventory: { ...this.player.weapons.inventory },
+                ammo: { ...this.player.weapons.ammo },
+                currentWeapon: this.player.weapons.currentWeapon,
+            },
+            dayNightTime: this.dayNight.time,
+        };
+    }
+
+    applySavedPlayerState() {
+        const saved = this.saveData && this.saveData.player;
+        if (!saved || !this.player) return;
+
+        if (typeof saved.x === 'number') this.player.x = saved.x;
+        if (typeof saved.y === 'number') this.player.y = saved.y;
+        if (typeof saved.angle === 'number') this.player.angle = saved.angle;
+        if (typeof saved.health === 'number') this.player.health = saved.health;
+        if (typeof saved.armor === 'number') this.player.armor = saved.armor;
+        if (typeof saved.money === 'number') this.player.money = saved.money;
+        if (typeof saved.wantedLevel === 'number') this.player.wantedLevel = saved.wantedLevel;
+        if (typeof saved.wantedDecayTimer === 'number') this.player.wantedDecayTimer = saved.wantedDecayTimer;
+        if (typeof saved.stamina === 'number') this.player.stamina = saved.stamina;
+        if (typeof saved.dayNightTime === 'number') this.dayNight.time = saved.dayNightTime;
+
+        const savedWeapons = saved.weapons || {};
+        this.player.weapons.inventory = {
+            ...this.player.weapons.inventory,
+            ...(savedWeapons.inventory || {}),
+        };
+        this.player.weapons.ammo = {
+            ...this.player.weapons.ammo,
+            ...(savedWeapons.ammo || {}),
+        };
+        const savedCurrent = savedWeapons.currentWeapon || 'fist';
+        this.player.weapons.currentWeapon = this.player.weapons.inventory[savedCurrent] ? savedCurrent : 'fist';
+    }
+
+    saveGame(notifyMessage = 'Game saved at the safe house.') {
+        this.saveData = this.saveData || {};
+        this.saveData.player = this.capturePlayerState();
+        if (this.missions && this.missions.getMissionState) {
+            this.saveData.missions = this.missions.getMissionState();
+        }
+        this.writeSaveData();
+        if (notifyMessage) this.hud.notify(notifyMessage);
+    }
+
     isDrivewayUnlocked() {
         const missionState = (this.missions && this.missions.getMissionState && this.missions.getMissionState())
             || (this.saveData && this.saveData.missions)
@@ -160,9 +219,63 @@ class Game {
             missionState.some(m => m.id === 'the_pickup' && m.completed);
     }
 
+    getUnlockedWeaponSet() {
+        const unlocked = new Set();
+        if (this.isAmmuNationUnlocked()) unlocked.add('pistol');
+
+        const inventory = this.player && this.player.weapons && this.player.weapons.inventory;
+        if (inventory) {
+            if (inventory.pistol) unlocked.add('pistol');
+            if (inventory.smg) unlocked.add('smg');
+            if (inventory.shotgun) unlocked.add('shotgun');
+            if (inventory.rpg) unlocked.add('rpg');
+        }
+
+        return unlocked;
+    }
+
+    getUnlockedNpcDropWeapons() {
+        return ['pistol', 'smg', 'shotgun'].filter(w => this.getUnlockedWeaponSet().has(w));
+    }
+
+    getAmmuNationItems() {
+        const unlockedWeapons = this.getUnlockedWeaponSet();
+        return [
+            { key: '1', name: 'Pistol Ammo (+30)', price: 50, owned: `Current: ${this.player.weapons.ammo.pistol || 0}`, unlocked: unlockedWeapons.has('pistol') },
+            { key: '2', name: 'SMG (+60 ammo)', price: 400, owned: this.player.weapons.inventory.smg ? `Current: ${this.player.weapons.ammo.smg || 0}` : 'NEW!', unlocked: unlockedWeapons.has('smg') },
+            { key: '3', name: 'Shotgun (+20 ammo)', price: 600, owned: this.player.weapons.inventory.shotgun ? `Current: ${this.player.weapons.ammo.shotgun || 0}` : 'NEW!', unlocked: unlockedWeapons.has('shotgun') },
+            { key: '4', name: 'Body Armor (+50)', price: 200, owned: `Current: ${Math.round(this.player.armor)}`, unlocked: true },
+            { key: '5', name: 'RPG (+3 shots)', price: 3000, owned: this.player.weapons.inventory.rpg ? `Current: ${this.player.weapons.ammo.rpg || 0}` : 'NEW!', unlocked: unlockedWeapons.has('rpg') }
+        ];
+    }
+
     isPaySprayUnlocked() {
         return (this.missions && this.missions.activeMission && this.missions.activeMission.id === 'the_pickup')
             || this.isAmmuNationUnlocked();
+    }
+
+    isRayRayGarageUnlocked() {
+        const missionState = (this.missions && this.missions.getMissionState && this.missions.getMissionState())
+            || (this.saveData && this.saveData.missions)
+            || [];
+        return Array.isArray(missionState) &&
+            missionState.some(m => m.id === 'repo_job' && m.completed);
+    }
+
+    isGarageVehicleEligible(vehicle) {
+        return !!(vehicle && ['sports', 'sedan', 'jeep', 'motorcycle'].includes(vehicle.type));
+    }
+
+    getRayRayGarageItems(vehicle) {
+        const upgrades = vehicle && vehicle.upgrades
+            ? vehicle.upgrades
+            : { tires: false, exhaust: false, engine: false };
+        return [
+            { key: '1', name: 'Full Tune Up', price: 200, owned: vehicle ? `Current health: ${Math.round(vehicle.health)}` : 'Restore full health', unlocked: true },
+            { key: '2', name: 'New Tires', price: 1500, owned: upgrades.tires ? 'Installed' : 'Vehicle speed +10 mph', unlocked: true },
+            { key: '3', name: 'New Exhaust', price: 2500, owned: upgrades.exhaust ? 'Installed' : 'Unavailable', unlocked: false },
+            { key: '4', name: 'New Engine', price: 5000, owned: upgrades.engine ? 'Installed' : 'Unavailable', unlocked: false }
+        ];
     }
 
     isHelicopterVehicle(vehicle) {
@@ -178,6 +291,7 @@ class Game {
             health: vehicle.health,
             imgKey: vehicle.imgKey || null,
             customColor: vehicle.customColor || null,
+            upgrades: vehicle.upgrades ? { ...vehicle.upgrades } : null,
         };
     }
 
@@ -190,6 +304,10 @@ class Game {
             vehicle.imgKey = VEHICLE_TYPES[vehicle.type].img;
             vehicle.img = this.images[vehicle.imgKey] || vehicle.img;
         }
+        vehicle.upgrades = state.upgrades
+            ? { tires: !!state.upgrades.tires, exhaust: !!state.upgrades.exhaust, engine: !!state.upgrades.engine }
+            : { tires: false, exhaust: false, engine: false };
+        vehicle.refreshPerformance();
     }
 
     spawnSavedDrivewayVehicle() {
@@ -227,6 +345,9 @@ class Game {
     }
 
     isNearDrivewaySaveZone(x, y) {
+        const tx = Math.floor(x / TILE);
+        const ty = Math.floor(y / TILE);
+        if (tx === 18 && ty >= 4 && ty <= 6) return true;
         return Collision.dist(x, y, SAFE_HOUSE_DRIVEWAY_PX.x, SAFE_HOUSE_DRIVEWAY_PX.y) < 56;
     }
 
@@ -236,11 +357,13 @@ class Game {
             'helicopter', 'helicopter_police', 'propeller', 'armored_car', 'truck_box_green', 'truck_box_red', 'truck_box_blue', 'npc_casual_front',
             'helicopter_red', 'helicopter_green', 'helicopter_blue',
             'car_jeep_blue',
+            'car_jeep_army',
             'car_sports_red', 'car_sports_blue', 'car_sports_green', 'car_sports_white',
             'car_sedan_red', 'car_sedan_blue', 'car_sedan_green', 'car_sedan_white',
             'hospital', 'police_building', 'bank', 'safe_house', 'house1', 'house2', 'house3', 'skyscraper1',
             'sidewalk/corner',
             'sidewalk/deck1',
+            'sidewalk/deck2',
             'sidewalk/sidewalk_plain',
             'roads/parking/ambulance',
             'roads/parking/police_parking',
@@ -262,6 +385,7 @@ class Game {
             'roads/stoplight',
             'buildings/gas',
             'buildings/parkinglot',
+            'buildings/parkinglot2',
             'buildings/fish_market',
             'buildings/lawyer',
             'buildings/building1',
@@ -269,6 +393,7 @@ class Game {
             'landscape/grass',
             'landscape/grass1',
             'landscape/grass2',
+            'landscape/cement_plain',
             'landscape/driveway1',
             'landscape/driveway2',
             'landscape/grass_fence1',
@@ -299,6 +424,7 @@ class Game {
             'helicopter_green': 'assets/vehicles/air/colors/helicopter_green.png',
             'helicopter_blue': 'assets/vehicles/air/colors/helicopter_blue.png',
             'car_jeep_blue': 'assets/vehicles/ground/car_jeep_blue.png',
+            'car_jeep_army': 'assets/vehicles/ground/car_jeep_army.png',
             'car_sports_red': 'assets/vehicles/ground/car_sports_red.png',
             'car_sports_blue': 'assets/vehicles/ground/car_sports_blue.png',
             'car_sports_green': 'assets/vehicles/ground/car_sports_green.png',
@@ -452,10 +578,11 @@ class Game {
         // Spawn player
         const sp = SAFE_HOUSE_SPAWN_PX;
         this.player = new Player(sp.x, sp.y, this.images.player);
+        this.applySavedPlayerState();
 
         // Snap camera to player immediately
-        this.camera.x = sp.x;
-        this.camera.y = sp.y;
+        this.camera.x = this.player.x;
+        this.camera.y = this.player.y;
 
         // Define spray colors early so they can be used for vehicle spawning
         this.sprayColors = [
@@ -538,6 +665,15 @@ class Game {
             blueJeep.speed = 0;
             blueJeep.isParkingLotCar = true;
             this.vehicles.push(blueJeep);
+
+            const armyJeep = new Vehicle(19.3 * TILE, 56.5 * TILE, 'jeep', this.images);
+            armyJeep.img = this.images['car_jeep_army'];
+            armyJeep.imgKey = 'car_jeep_army';
+            armyJeep.angle = Math.PI / 2; // facing south
+            armyJeep.ai.active = false;
+            armyJeep.speed = 0;
+            armyJeep.isParkingLotCar = true;
+            this.vehicles.push(armyJeep);
         }
 
         this.spawnSavedDrivewayVehicle();
@@ -549,7 +685,7 @@ class Game {
             frontWalk: this.images[`npc_${name}_front_walk`],
             backWalk: this.images[`npc_${name}_back_walk`],
         }));
-        this.npcManager = new NPCManager(this.world, 150, npcCharacters);
+        this.npcManager = new NPCManager(this.world, 150, npcCharacters, () => this.getUnlockedNpcDropWeapons());
 
         // Static world pickups — collected silently on contact, no marker
         this.worldPickups = [
@@ -585,11 +721,14 @@ class Game {
         this.storeOpen = false;
         this.storeIndex = -1;
         this.storeCooldown = 0;
+        this.garageOpen = false;
+        this.garageCooldown = 0;
 
         this.sprayOpen = false;
         this.sprayCooldown = 0;
         this.healCooldown = 0;
         this.lawyerCooldown = 0;
+        this.saveCooldown = 0;
         this.bankLastRobbedAt = null; // Date.now() timestamp, null = never robbed
         this.bankStolen = 0;          // amount taken in last robbery
         this.bankProxCooldown = 0;    // prevents re-trigger every frame
@@ -1158,11 +1297,17 @@ class Game {
         // Weapon Store interaction
         this.updateStore(dt);
 
+        // Ray Ray's Garage interaction
+        this.updateGarage(dt);
+
         // Pay & Spray interaction
         this.updatePaySpray(dt);
 
         // Hospital heal zone
         this.updateHeal(dt);
+
+        // Safe house manual save
+        this.updateSafeHouseSave(dt);
 
         // Lawyer's office
         this.updateLawyer(dt);
@@ -1265,7 +1410,7 @@ class Game {
         this.camera.restoreTransform(ctx);
 
         // Crosshair (screen space)
-        if (this.player && this.player.alive && !this.menu.phoneOpen && !this.storeOpen) {
+        if (this.player && this.player.alive && !this.menu.phoneOpen && !this.storeOpen && !this.garageOpen) {
             const mx = Input.mouse.x;
             const my = Input.mouse.y;
             ctx.save();
@@ -1292,6 +1437,10 @@ class Game {
         // Store overlay
         if (this.storeOpen) {
             this.drawStoreUI(ctx, this.canvas);
+        }
+
+        if (this.garageOpen) {
+            this.drawGarageUI(ctx, this.canvas);
         }
 
         // Pay & Spray overlay
@@ -1378,6 +1527,7 @@ class Game {
                 title: 'GENERAL', col: 0, rowOffset: 8, items: [
                     ['Tab', 'Phone — Missions'],
                     ['M', 'Full City Map'],
+                    ['S', 'Save at Safe House'],
                     ['I', 'This Info Screen'],
                     ['Esc', 'Pause / Resume'],
                 ]
@@ -1388,6 +1538,7 @@ class Game {
                     ['Blue P', 'Police Station'],
                     ['Orange S', 'Pay & Spray — $500'],
                     ['Green $', 'Ammu-Nation Store'],
+                    ['Green House', 'Safe House — Save Game'],
                 ]
             },
         ];
@@ -1502,9 +1653,13 @@ class Game {
             }
             // Handle purchases (number keys)
             if (this.storeCooldown <= 0) {
+                const items = this.getAmmuNationItems();
                 if (Input.isDown('1')) {
                     // Pistol ammo
-                    if (this.player.money >= 50) {
+                    if (!items[0].unlocked) {
+                        this.hud.notify('Pistol ammo is locked.');
+                        this.storeCooldown = 0.5;
+                    } else if (this.player.money >= 50) {
                         this.player.money -= 50;
                         this.player.weapons.pickupWeapon('pistol', 30);
                         this.hud.notify('Bought Pistol Ammo (+30) — $50');
@@ -1517,7 +1672,10 @@ class Game {
                 }
                 if (Input.isDown('2')) {
                     // SMG
-                    if (this.player.money >= 400) {
+                    if (!items[1].unlocked) {
+                        this.hud.notify('SMG is locked.');
+                        this.storeCooldown = 0.5;
+                    } else if (this.player.money >= 400) {
                         this.player.money -= 400;
                         this.player.weapons.pickupWeapon('smg', 60);
                         this.hud.notify('Bought SMG (+60 ammo) — $400');
@@ -1530,7 +1688,10 @@ class Game {
                 }
                 if (Input.isDown('3')) {
                     // Shotgun
-                    if (this.player.money >= 600) {
+                    if (!items[2].unlocked) {
+                        this.hud.notify('Shotgun is locked.');
+                        this.storeCooldown = 0.5;
+                    } else if (this.player.money >= 600) {
                         this.player.money -= 600;
                         this.player.weapons.pickupWeapon('shotgun', 20);
                         this.hud.notify('Bought Shotgun (+20 ammo) — $600');
@@ -1556,7 +1717,10 @@ class Game {
                 }
                 if (Input.isDown('5')) {
                     // RPG
-                    if (this.player.money >= 3000) {
+                    if (!items[4].unlocked) {
+                        this.hud.notify('RPG is locked.');
+                        this.storeCooldown = 0.5;
+                    } else if (this.player.money >= 3000) {
                         this.player.money -= 3000;
                         this.player.weapons.pickupWeapon('rpg', 3);
                         this.hud.notify('Bought RPG (+3 ammo) — $3000');
@@ -1571,6 +1735,68 @@ class Game {
         } else {
             this.storeOpen = false;
             this.storeIndex = -1;
+        }
+    }
+
+    updateGarage(dt) {
+        this.garageCooldown = Math.max(0, this.garageCooldown - dt);
+        if (!this.isRayRayGarageUnlocked()) {
+            this.garageOpen = false;
+            return;
+        }
+
+        const vehicle = this.player.inVehicle;
+        const inZone = vehicle &&
+            vehicle.x >= RAY_RAY_GARAGE_RECT.x && vehicle.x <= RAY_RAY_GARAGE_RECT.x + RAY_RAY_GARAGE_RECT.w &&
+            vehicle.y >= RAY_RAY_GARAGE_RECT.y && vehicle.y <= RAY_RAY_GARAGE_RECT.y + RAY_RAY_GARAGE_RECT.h;
+
+        if (!vehicle || !inZone || !this.isGarageVehicleEligible(vehicle)) {
+            this.garageOpen = false;
+            return;
+        }
+
+        if (!this.garageOpen) {
+            this.garageOpen = true;
+            this.hud.notify("Ray Ray's Garage");
+        }
+
+        if (this.garageCooldown > 0) return;
+
+        const items = this.getRayRayGarageItems(vehicle);
+        if (Input.isDown('1')) {
+            if (vehicle.health >= 200) {
+                this.hud.notify('Vehicle already at full health.');
+            } else if (this.player.money >= items[0].price) {
+                this.player.money -= items[0].price;
+                vehicle.health = 200;
+                this.hud.notify('Full tune up complete.');
+                this.audio.playPickup();
+            } else {
+                this.hud.notify('Not enough money!');
+            }
+            this.garageCooldown = 0.5;
+        }
+        if (Input.isDown('2')) {
+            if (vehicle.upgrades.tires) {
+                this.hud.notify('New tires already installed.');
+            } else if (this.player.money >= items[1].price) {
+                this.player.money -= items[1].price;
+                vehicle.upgrades.tires = true;
+                vehicle.refreshPerformance();
+                this.hud.notify('New tires installed. Top speed +10 mph.');
+                this.audio.playPickup();
+            } else {
+                this.hud.notify('Not enough money!');
+            }
+            this.garageCooldown = 0.5;
+        }
+        if (Input.isDown('3')) {
+            this.hud.notify('New exhaust is locked.');
+            this.garageCooldown = 0.5;
+        }
+        if (Input.isDown('4')) {
+            this.hud.notify('New engine is locked.');
+            this.garageCooldown = 0.5;
         }
     }
 
@@ -1642,7 +1868,8 @@ class Game {
     updateHeal(dt) {
         this.healCooldown = Math.max(0, this.healCooldown - dt);
         if (this.player.inVehicle || !this.player.alive) return;
-        const near = Collision.dist(this.player.x, this.player.y, HEAL_PX.x, HEAL_PX.y) < 55;
+        const near = this.player.x >= HEAL_ZONE_RECT.x && this.player.x <= HEAL_ZONE_RECT.x + HEAL_ZONE_RECT.w &&
+            this.player.y >= HEAL_ZONE_RECT.y && this.player.y <= HEAL_ZONE_RECT.y + HEAL_ZONE_RECT.h;
         if (!near || this.healCooldown > 0) return;
         if (Input.isDown('h')) {
             Input.keys['h'] = false;
@@ -1658,6 +1885,24 @@ class Game {
                 this.hud.notify('Not enough money! Need $25');
             }
             this.healCooldown = 0.4;
+        }
+    }
+
+    updateSafeHouseSave(dt) {
+        this.saveCooldown = Math.max(0, this.saveCooldown - dt);
+        if (this.player.inVehicle || !this.player.alive) return;
+
+        const left = SAFE_HOUSE_MARKER_PX.x - TILE;
+        const top = SAFE_HOUSE_MARKER_PX.y - TILE / 2;
+        const inPad = this.player.x >= left && this.player.x <= left + 2 * TILE &&
+            this.player.y >= top && this.player.y <= top + TILE;
+
+        if (!inPad || this.saveCooldown > 0) return;
+        if (Input.isDown('s')) {
+            Input.keys['s'] = false;
+            this.saveGame();
+            this.audio.playPickup();
+            this.saveCooldown = 0.6;
         }
     }
 
@@ -1867,10 +2112,10 @@ class Game {
         const healPulse = Math.sin(Date.now() / 500) * 0.2 + 0.8;
         ctx.save();
         ctx.fillStyle = `rgba(0, 200, 80, ${0.22 * healPulse})`;
-        ctx.fillRect(healX - 40, healY - 40, 80, 80);
+        ctx.fillRect(HEAL_ZONE_RECT.x, HEAL_ZONE_RECT.y, HEAL_ZONE_RECT.w, HEAL_ZONE_RECT.h);
         ctx.strokeStyle = `rgba(0, 230, 90, ${healPulse})`;
         ctx.lineWidth = 2;
-        ctx.strokeRect(healX - 40, healY - 40, 80, 80);
+        ctx.strokeRect(HEAL_ZONE_RECT.x, HEAL_ZONE_RECT.y, HEAL_ZONE_RECT.w, HEAL_ZONE_RECT.h);
         ctx.fillStyle = `rgba(0, 230, 90, ${healPulse})`;
         ctx.fillRect(healX - 5, healY - 16, 10, 32);
         ctx.fillRect(healX - 16, healY - 5, 32, 10);
@@ -1880,9 +2125,31 @@ class Game {
         ctx.textBaseline = 'middle';
         ctx.shadowColor = '#000';
         ctx.shadowBlur = 3;
-        ctx.fillText('+25 HP  $25  [H]', healX, healY + 30);
+        ctx.fillText('+25 HP  $25  [H]', healX, healY);
         ctx.textBaseline = 'alphabetic';
         ctx.restore();
+
+        // ---- Ray Ray's Garage ----
+        if (this.isRayRayGarageUnlocked()) {
+            const garagePulse = Math.sin(Date.now() / 360) * 0.5 + 0.5;
+            ctx.save();
+            ctx.fillStyle = `rgba(255, 120, 40, ${0.18 + 0.22 * garagePulse})`;
+            ctx.fillRect(RAY_RAY_GARAGE_RECT.x, RAY_RAY_GARAGE_RECT.y, RAY_RAY_GARAGE_RECT.w, RAY_RAY_GARAGE_RECT.h);
+            ctx.strokeStyle = `rgba(255, 180, 90, ${0.55 + 0.45 * garagePulse})`;
+            ctx.lineWidth = 2;
+            ctx.shadowColor = 'rgba(255, 150, 60, 0.85)';
+            ctx.shadowBlur = 10 + 8 * garagePulse;
+            ctx.strokeRect(RAY_RAY_GARAGE_RECT.x, RAY_RAY_GARAGE_RECT.y, RAY_RAY_GARAGE_RECT.w, RAY_RAY_GARAGE_RECT.h);
+            ctx.fillStyle = '#fff2dc';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(255, 150, 60, 0.9)';
+            ctx.shadowBlur = 8;
+            ctx.fillText("RAY RAY'S GARAGE", RAY_RAY_GARAGE_PX.x, RAY_RAY_GARAGE_PX.y);
+            ctx.textBaseline = 'alphabetic';
+            ctx.restore();
+        }
 
         // ---- Pay & Spray ----
         if (this.isPaySprayUnlocked()) {
@@ -1927,7 +2194,10 @@ class Game {
         ctx.textBaseline = 'middle';
         ctx.shadowColor = 'rgba(0, 210, 255, 0.95)';
         ctx.shadowBlur = 8 + 6 * shPulse;
-        ctx.fillText('SAFE HOUSE', shx, shy);
+        ctx.fillText('SAFE HOUSE', shx, shy - 8);
+        ctx.fillStyle = '#bdefff';
+        ctx.font = '10px Arial';
+        ctx.fillText('[S] SAVE GAME', shx, shy + 10);
         ctx.textBaseline = 'alphabetic';
         ctx.restore();
 
@@ -2060,44 +2330,40 @@ class Game {
         ctx.fillText(`Balance: $${this.player.money.toLocaleString()}`, W / 2, py + 50);
 
         // Items
-        const items = [
-            { key: '1', name: 'Pistol Ammo (+30)', price: 50, owned: `Current: ${this.player.weapons.ammo.pistol || 0}` },
-            { key: '2', name: 'SMG (+60 ammo)', price: 400, owned: this.player.weapons.inventory.smg ? `Current: ${this.player.weapons.ammo.smg || 0}` : 'NEW!' },
-            { key: '3', name: 'Shotgun (+20 ammo)', price: 600, owned: this.player.weapons.inventory.shotgun ? `Current: ${this.player.weapons.ammo.shotgun || 0}` : 'NEW!' },
-            { key: '4', name: 'Body Armor (+50)', price: 200, owned: `Current: ${Math.round(this.player.armor)}` },
-            { key: '5', name: 'RPG (+3 shots)', price: 3000, owned: this.player.weapons.inventory.rpg ? `Current: ${this.player.weapons.ammo.rpg || 0}` : 'NEW!' }
-        ];
+        const items = this.getAmmuNationItems();
 
         ctx.textAlign = 'left';
         items.forEach((item, i) => {
             const iy = py + 75 + i * 42;
-            const canAfford = this.player.money >= item.price;
+            const canAfford = item.unlocked && this.player.money >= item.price;
 
             // Row background
-            ctx.fillStyle = canAfford ? 'rgba(0, 100, 0, 0.3)' : 'rgba(100, 0, 0, 0.2)';
+            ctx.fillStyle = item.unlocked
+                ? (canAfford ? 'rgba(0, 100, 0, 0.3)' : 'rgba(100, 0, 0, 0.2)')
+                : 'rgba(70, 70, 70, 0.28)';
             ctx.fillRect(px + 10, iy, panelW - 20, 34);
 
             // Key button
-            ctx.fillStyle = '#00cc44';
+            ctx.fillStyle = item.unlocked ? '#00cc44' : '#666';
             ctx.font = 'bold 14px "Segoe UI", Arial';
             ctx.fillText(`[${item.key}]`, px + 18, iy + 22);
 
             // Item name
-            ctx.fillStyle = canAfford ? '#fff' : '#666';
+            ctx.fillStyle = item.unlocked ? (canAfford ? '#fff' : '#666') : '#999';
             ctx.font = '13px "Segoe UI", Arial';
             ctx.fillText(item.name, px + 55, iy + 15);
 
             // Price
-            ctx.fillStyle = canAfford ? '#44dd44' : '#cc4444';
+            ctx.fillStyle = item.unlocked ? (canAfford ? '#44dd44' : '#cc4444') : '#777';
             ctx.font = 'bold 13px "Segoe UI", Arial';
             ctx.textAlign = 'right';
-            ctx.fillText(`$${item.price}`, px + panelW - 18, iy + 15);
+            ctx.fillText(item.unlocked ? `$${item.price}` : 'LOCKED', px + panelW - 18, iy + 15);
 
             // Owned/current
-            ctx.fillStyle = '#888';
+            ctx.fillStyle = item.unlocked ? '#888' : '#777';
             ctx.font = '10px "Segoe UI", Arial';
             ctx.textAlign = 'left';
-            ctx.fillText(item.owned, px + 55, iy + 29);
+            ctx.fillText(item.unlocked ? item.owned : 'Unavailable', px + 55, iy + 29);
             ctx.textAlign = 'left';
         });
 
@@ -2106,6 +2372,67 @@ class Game {
         ctx.font = '10px "Segoe UI", Arial';
         ctx.textAlign = 'center';
         ctx.fillText('Walk away to close', W / 2, py + panelH - 10);
+    }
+
+    drawGarageUI(ctx, canvas) {
+        const W = canvas.width;
+        const H = canvas.height;
+        const vehicle = this.player.inVehicle;
+        if (!vehicle || !this.isGarageVehicleEligible(vehicle)) return;
+
+        const panelW = 360;
+        const panelH = 235;
+        const px = W / 2 - panelW / 2;
+        const py = H / 2 - panelH / 2;
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.87)';
+        ctx.fillRect(px, py, panelW, panelH);
+        ctx.strokeStyle = '#ff8844';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px, py, panelW, panelH);
+
+        ctx.fillStyle = '#ffb066';
+        ctx.font = 'bold 20px "Segoe UI", Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText("RAY RAY'S GARAGE", W / 2, py + 30);
+
+        ctx.fillStyle = '#aaa';
+        ctx.font = '12px "Segoe UI", Arial';
+        ctx.fillText(`${vehicle.name}  |  Balance: $${this.player.money.toLocaleString()}`, W / 2, py + 50);
+
+        const items = this.getRayRayGarageItems(vehicle);
+        ctx.textAlign = 'left';
+        items.forEach((item, i) => {
+            const iy = py + 72 + i * 46;
+            const canAfford = item.unlocked && this.player.money >= item.price;
+            ctx.fillStyle = item.unlocked
+                ? (canAfford ? 'rgba(120, 60, 0, 0.34)' : 'rgba(90, 25, 0, 0.25)')
+                : 'rgba(70, 70, 70, 0.28)';
+            ctx.fillRect(px + 12, iy, panelW - 24, 36);
+
+            ctx.fillStyle = item.unlocked ? '#ff8844' : '#666';
+            ctx.font = 'bold 14px "Segoe UI", Arial';
+            ctx.fillText(`[${item.key}]`, px + 20, iy + 23);
+
+            ctx.fillStyle = item.unlocked ? (canAfford ? '#fff' : '#bbb') : '#999';
+            ctx.font = '13px "Segoe UI", Arial';
+            ctx.fillText(item.name, px + 58, iy + 15);
+
+            ctx.fillStyle = item.unlocked ? (canAfford ? '#ffcc66' : '#cc7755') : '#777';
+            ctx.font = 'bold 13px "Segoe UI", Arial';
+            ctx.textAlign = 'right';
+            ctx.fillText(item.unlocked ? `$${item.price}` : 'LOCKED', px + panelW - 18, iy + 15);
+
+            ctx.fillStyle = item.unlocked ? '#999' : '#777';
+            ctx.font = '10px "Segoe UI", Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(item.owned, px + 58, iy + 29);
+        });
+
+        ctx.fillStyle = '#666';
+        ctx.font = '10px "Segoe UI", Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Drive away to close', W / 2, py + panelH - 10);
     }
 
     explode(x, y, radius, damage, shooter) {
